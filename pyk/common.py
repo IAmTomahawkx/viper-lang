@@ -5,9 +5,9 @@ class PYKNamespace(dict):
     __buildmode = False
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self[PYK_KEYWORDS['PYK_TRUE']] = True
-        self[PYK_KEYWORDS['PYK_FALSE']] = False
-    
+        self[PYK_KEYWORDS['PYK_TRUE']] = True, True
+        self[PYK_KEYWORDS['PYK_FALSE']] = False, True
+
     def buildmode(self, state: bool):
         self.__buildmode = state
     
@@ -45,10 +45,10 @@ class PYKNamespace(dict):
 
 def find_outer_brackets(
     raw_code: str,
-    bracket_in=None,
-    bracket_out=None,
-    include_brackets=True,
-    skip_extra=False
+    bracket_in: str = None,
+    bracket_out: str = None,
+    include_brackets: bool = True,
+    skip_extra: bool = False
     ) -> str:
     """
     returns code up to the outermost bracket
@@ -97,4 +97,3 @@ def find_outer_brackets(
             output += char
     
     raise PYK_SyntaxError("End character, '{0}', not found".format(bracket_out))
-

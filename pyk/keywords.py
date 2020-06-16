@@ -24,6 +24,7 @@ PYK_KEYWORDS = {
     "PYK_COMMENT": "//"
 }
 
+# don't touch this one
 PYK_STRICT_PARSING_KEYWORDS = [
     PYK_KEYWORDS['PYK_FUNC'],
     PYK_KEYWORDS['PYK_STATIC'],

@@ -37,3 +37,6 @@ class PYK_Error(Exception):
     def init(self, msg):
         self.message = msg if isinstance(msg, str) else repr(msg)
 
+
+class PYK_LIST(PYKObject):
+    pass

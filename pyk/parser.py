@@ -7,7 +7,7 @@ from .builtins import builtins
 
 def get_value_from_string(raw: str, global_ns, local_ns, depth):
     raw = raw.strip()
-    if raw.startswith(('"', "'")):
+    if raw.startswith('"'):
         # its a string
         resp = ""
         depth = False
@@ -25,7 +25,7 @@ def get_value_from_string(raw: str, global_ns, local_ns, depth):
                 except:
                     raise PYK_SyntaxError("Invalid escape")
             
-            if char in ("'", '"'):
+            if char == '"':
                 if depth:
                     return resp
                 depth = True
@@ -70,7 +70,6 @@ def get_value_from_string(raw: str, global_ns, local_ns, depth):
         return var
     
     raise PYK_NameError(raw)
-    
 
 def get_variable_name(raw: str, marker=None):
     name = ""
@@ -129,7 +128,7 @@ def get_variable_or_function_value(name: str, global_ns, local_ns, depth):
         resp = get_value_from_string(name, global_ns, local_ns, depth)
     
     return resp
-        
+
 
 def call_function(line, global_ns, local_ns, depth):
     func = get_variable(line.split(PYK_BRACKETS['PYK_FUNCTIONCALL_IN'])[0], global_ns, local_ns, marker="")
@@ -142,31 +141,55 @@ def call_function(line, global_ns, local_ns, depth):
     
     return resp
 
-def parse_call_arguments(args: str, global_ns, local_ns, depth):
+
+def parse_call_arguments(args: str, global_ns, local_ns, depth) -> list:
     raw_code = find_outer_brackets(args, PYK_BRACKETS['PYK_FUNCTIONCALL_IN'], PYK_BRACKETS['PYK_FUNCTIONCALL_OUT'], include_brackets=False)
     
     args = []
     argname = ""
-    for char in raw_code:
+    string = False
+    argument_isstring = False
+    for index, char in enumerate(raw_code):
         if char.isspace():
+            if string:
+                argname += char
+
             continue
+
+        if char == '"':
+            if string and (raw_code[index-1] if index is not 0 else "") != "\\":
+                string = False
+                continue
+
+            elif not string:
+                string = True
+                argument_isstring = True
+
+                continue
         
-        if char == ",":
+        if char == "," and not string:
             if not argname:
                 raise PYK_SyntaxError("Invalid comma")
-            
-            args.append(argname)
+
+            args.append((argname, argument_isstring))
+            argument_isstring = False
             argname = ""
             continue
         
         argname += char
-    
+
+    if string:
+        raise PYK_SyntaxError("expected a closing string quote")
+
     if argname:
-        args.append(argname)
+        args.append((argname, argument_isstring))
 
     resp = []
-    for arg in args:
-        print(arg)
+    for arg, isstring in args:
+        if isstring:
+            resp.append(arg)
+            continue
+
         if PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] in arg:
             resp.append(call_function(arg, global_ns, local_ns, depth))
         else:
@@ -175,6 +198,7 @@ def parse_call_arguments(args: str, global_ns, local_ns, depth):
     
     return resp
 
+
 def PYK_parse_return(line, global_ns, local_ns, depth):
     line = line.strip().replace(PYK_KEYWORDS['PYK_RETURN'], "", 1).strip()
     if not line:
@@ -182,6 +206,7 @@ def PYK_parse_return(line, global_ns, local_ns, depth):
     
     resp = get_value_from_string(line, global_ns, local_ns, depth)
     return resp or PYK_NONE
+
 
 def compare_conditional(global_ns, local_ns, depth, arg1, operator=None, arg2=None):
     if not operator and not arg2:
