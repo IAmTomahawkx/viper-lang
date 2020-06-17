@@ -34,6 +34,9 @@ def get_value_from_string(raw: str, global_ns, local_ns, depth):
                 resp += char
             
         raise PYK_SyntaxError("Invalid string")
+
+    if any([x in raw for x in "/*+-"]):
+        return build_math(raw, global_ns, local_ns, depth)
     
     if raw.startswith(PYK_KEYWORDS['PYK_VARMARKER']):
         var = get_variable(raw, global_ns, local_ns)
@@ -100,6 +103,65 @@ def _get(name, global_ns, local_ns):
         resp = global_ns.get(name)
     
     return resp
+
+def build_math(raw: str, global_ns, local_ns=None, depth=None):
+    args = []
+    cur = ""
+    for char in raw:
+        if char.isspace():
+            continue
+
+        if char not in ("+", "-", "*", "/"):
+            cur += char
+            continue
+
+        if not cur:
+            raise PYK_SyntaxError("doubled math operators")
+
+        if not args:
+            args.append(cur)
+            args.append([char])
+            cur = ""
+            continue
+
+        else:
+            args[-1].append(cur)
+            args.append([char])
+            cur = ""
+            continue
+
+    if cur:
+        args[-1].append(cur)
+
+    out = 0
+    ch = {
+        "/": lambda a, b: a / b,
+        "*": lambda a, b: a * b,
+        "+": lambda a, b: a + b,
+        "-": lambda a, b: a - b
+    }
+    for index, arg in enumerate(args):
+        if index is 0:
+            continue
+        if len(arg) != 2:
+            print(arg)
+            raise PYK_SyntaxError("something isnt right")
+        front = args[index-1] if not isinstance(args[index-1], list) else out
+        typ = arg[0]
+        back = arg[1]
+        if isinstance(front, str):
+            front2 = get_value_from_string(front, global_ns, local_ns, depth)
+        else:
+            front2 = front
+
+        back = get_value_from_string(back, global_ns, local_ns, depth)
+        r = ch[typ](front2, back)
+        if isinstance(front, str): # i really hate this part, maybe make math parsing not so bad later
+            out += r
+        else:
+            out = r
+
+    return out
 
 def get_variable(raw: str, global_ns, local_ns=None, strict=True, marker=None):
     resp = _get(raw.strip(), global_ns, local_ns)
@@ -279,14 +341,16 @@ def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, skipto
         func = functions.PYKFunction(code, file, global_ns)
         global_ns[func.name] = func, static
         return lineno + len(func.code.splitlines())
-    
+
     if line.startswith(PYK_KEYWORDS['PYK_VARMARKER']):
         name = get_variable_name(line)
         if name is None:
             raise PYK_SyntaxError("invalid variable name")
+
         getter = line.split("=")
         if len(getter) < 2:
             raise PYK_SyntaxError("declaring variable must have an assignment")
+
         if PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] in line:
             value = call_function(line, global_ns, local_ns, depth)
         
