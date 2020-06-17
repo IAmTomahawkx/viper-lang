@@ -4,6 +4,8 @@ from .builtins import builtins
 from .errors import *
 from .common import *
 
+__version__ = "0.0.1"
+
 def eval(raw_code, defaults=None, namespace=None, file="<string>"):
     """
 
