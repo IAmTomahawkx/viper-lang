@@ -4,8 +4,8 @@ from .builtins import builtins
 from .errors import *
 from .common import *
 
-def eval(raw_code: str, defaults: dict = None, namespace: PYKNamespace = None, file: str = "<string>") -> PYKNamespace:
+async def eval(raw_code: str, defaults: dict = None, namespace: PYKNamespace = None, file: str = "<string>") -> PYKNamespace:
     ...
 
-def eval_file(fp: str, defaults: dict = None, namespace: PYKNamespace = None) -> PYKNamespace:
+async def eval_file(fp: str, defaults: dict = None, namespace: PYKNamespace = None) -> PYKNamespace:
     ...

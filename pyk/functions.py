@@ -1,4 +1,4 @@
-from .objects import PYKObject
+from .objects import PYKObject, PYK_NONE
 from .common import PYKNamespace, find_outer_brackets
 from .errors import PYK_SyntaxError, PYK_ArgumentError
 from .keywords import PYK_KEYWORDS, PYK_BRACKETS
@@ -65,7 +65,8 @@ class PYKFunction(PYKObject):
         self.global_ns = namespace
         self.init()
     
-    def Call(self, *args, depth=None):
+    async def Call(self, *args, depth=None):
+        args = list(reversed(args))
         if depth is None:
             raise ValueError("depth is a required argument")
         
@@ -73,14 +74,18 @@ class PYKFunction(PYKObject):
         ns.buildmode(True)
         for index, (name, optional) in enumerate(self.arguments):
             try:
-                ns[name] = args[index]
-            except IndexError:
+                ns[name] = args.pop()
+            except:
                 if optional:
+                    ns[name] = PYK_NONE
                     break
                 raise PYK_ArgumentError("Missing required argument '{0}' for function call".format(name))
+
+        if args:
+            raise PYK_ArgumentError("Too many arguments passed to " + self.name)
         
         ns.buildmode(False)
-        resp = parser.build_code(self._code, self.global_ns, ns, self.file, depth+1)
+        resp = await parser.build_code_async(self._code, self.global_ns, ns, self.file, depth+1)
         return resp
 
 from . import parser

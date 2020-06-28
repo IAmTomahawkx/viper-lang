@@ -1,4 +1,4 @@
-from .parser import build_code
+from .parser import build_code_async
 from .objects import *
 from .builtins import builtins
 from .errors import *
@@ -6,9 +6,8 @@ from .common import *
 
 __version__ = "0.0.1"
 
-def eval(raw_code, defaults=None, namespace=None, file="<string>"):
+async def eval(raw_code, defaults=None, namespace=None, file="<string>"):
     """
-
     :param raw_code: :class:`str` the code to evaluate
     :param defaults: Optional[:class:`dict`] defaults to be statically injected into the namespace before parsing the file
     :param namespace: Optional[:class:`PYKNamespace`] a pre-built namespace, useful to keep variables alive between evals
@@ -32,10 +31,10 @@ def eval(raw_code, defaults=None, namespace=None, file="<string>"):
     module_ns['globals'] = module_ns
     module_ns.buildmode(False)
     
-    build_code(raw_code, module_ns, None, file=file)
+    await build_code_async(raw_code, module_ns, None, file=file)
     return module_ns
 
-def eval_file(fp, defaults=None, namespace=None):
+async def eval_file(fp, defaults=None, namespace=None):
     """
 
     :param fp: :class:`str` the file path to read and parse
@@ -46,5 +45,5 @@ def eval_file(fp, defaults=None, namespace=None):
     with open(fp) as f:
         data = f.read()
     
-    return eval(data, defaults, namespace, file=fp)
+    return await eval(data, defaults, namespace, file=fp)
 
