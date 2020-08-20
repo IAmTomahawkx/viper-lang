@@ -5,7 +5,7 @@ PYK_KEYWORDS = {
     
     "PYK_IF": "if",
     "PYK_ELIF": "else if",
-    "PYK_ELSE": "default",
+    "PYK_ELSE": "else",
     
     "PYK_FALSE": "false",
     "PYK_TRUE": "true",
@@ -18,10 +18,15 @@ PYK_KEYWORDS = {
     "PYK_GREATER": ">",
     "PYK_SMALLER": "<",
     "PYK_CONTAINS": "in",
+    "PYK_NOTCONTAINS": "!in",
     
     "PYK_VARMARKER": "$",
     
-    "PYK_COMMENT": "//"
+    "PYK_COMMENT": "//",
+
+    "PYK_TRY": "try",
+    "PYK_CATCH": "error",
+    "PYK_THROW": "raise"
 }
 
 # don't touch this one

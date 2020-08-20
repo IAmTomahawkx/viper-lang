@@ -1,0 +1,15 @@
+language: python
+python:
+  - "3.6"
+  - "3.7"
+  - "3.8"
+  - "nightly"
+
+install:
+  - pip install coverage
+  - pip install git+https://github.com/ShineyDev/prettify.py.git
+  - pip install discord.py==1.4.1
+
+script:
+  - coverage run test.py
+  - coverage report -m

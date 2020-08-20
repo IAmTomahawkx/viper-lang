@@ -42,7 +42,11 @@ async def get_value_from_string(raw: str, global_ns, local_ns, depth):
 
     
     if raw.startswith(PYK_KEYWORDS['PYK_VARMARKER']):
-        var = get_variable(raw, global_ns, local_ns)
+        if PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] in raw:
+            var = await call_function(raw, global_ns, local_ns, depth)
+        else:
+            var = get_variable(raw, global_ns, local_ns)
+
         return var
     
     if raw == PYK_KEYWORDS['PYK_TRUE']:
@@ -86,7 +90,7 @@ def get_variable_name(raw: str, marker=None):
     for index, char in enumerate(raw):
         if char == marker:
             for char_ in raw[index+1:]:
-                if char_.isspace() or char_ == "." or char == "(":
+                if char_.isspace() or char == "(":
                     break
                 name += char_
             break
@@ -98,6 +102,8 @@ def _get(name, global_ns, local_ns):
     
     if name == PYK_KEYWORDS['PYK_NULL']:
         return PYK_NONE
+
+
     
     if local_ns is not None:
         resp = local_ns.get(name)
@@ -182,8 +188,24 @@ def get_variable(raw: str, global_ns, local_ns=None, strict=True, marker=None):
             raise PYK_NameError("invalid variable name: '{0}'".format(raw))
         else:
             return None
-    
-    resp = _get(name, global_ns, local_ns)
+
+    subs = name.split(".")
+    if len(subs) > 1:
+        cur = [subs[0]]
+        resp = _get(subs[0], global_ns, local_ns)
+        for attr in subs[1:]:
+            cur.append(attr)
+
+            if attr.startswith("_"):
+                raise PYK_AttributeError("underscored attributes are private, and cannot be accessed. ({0})".format(".".join(cur)))
+
+            try:
+                resp = getattr(resp, attr)
+            except AttributeError:
+                raise PYK_AttributeError("{0} has no attribute {1} ({2})".format(resp, attr, ".".join(cur)))
+
+    else:
+        resp = _get(name, global_ns, local_ns)
     
     if resp is None and strict:
         raise PYK_NameError("name '{0}' is not defined".format(name))
@@ -201,9 +223,10 @@ async def get_variable_or_function_value(name: str, global_ns, local_ns, depth):
 
 
 async def call_function(line, global_ns, local_ns, depth):
-    func = get_variable(line.split(PYK_BRACKETS['PYK_FUNCTIONCALL_IN'])[0], global_ns, local_ns, marker="")
+    func = get_variable(line.split(PYK_BRACKETS['PYK_FUNCTIONCALL_IN'])[0].split("=")[-1].strip(), global_ns, local_ns, marker="")
     t = PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] + PYK_BRACKETS['PYK_FUNCTIONCALL_IN'].join(line.split(PYK_BRACKETS['PYK_FUNCTIONCALL_IN'])[1:])
     args = await parse_call_arguments(t, global_ns, local_ns, depth)
+
     if isinstance(func, functions.PYKFunction):
         resp = await func.Call(*args, depth=depth)
     elif inspect.iscoroutinefunction(func):
@@ -223,14 +246,21 @@ async def parse_call_arguments(args: str, global_ns, local_ns, depth) -> list:
     argname = ""
     string = False
     argument_isstring = False
+    bracketed = 0
     for index, char in enumerate(raw_code):
         if char.isspace():
-            if string:
+            if string or bracketed > 0:
                 argname += char
 
             continue
 
-        if char == '"':
+        if char == PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] and not string:
+            bracketed += 1
+
+        if char == PYK_BRACKETS['PYK_FUNCTIONCALL_OUT'] and not string:
+            bracketed -= 1
+
+        if char == '"' and bracketed < 1:
             if string and (raw_code[index-1] if index is not 0 else "") != "\\":
                 string = False
                 continue
@@ -241,11 +271,13 @@ async def parse_call_arguments(args: str, global_ns, local_ns, depth) -> list:
 
                 continue
         
-        if char == "," and not string:
+        if char == "," and not string and bracketed == 0:
             if not argname:
                 raise PYK_SyntaxError("Invalid comma")
 
-            args.append((argname, argument_isstring))
+            if argument_isstring:
+                argname = '"' + argname + '"'
+            args.append(argname)
             argument_isstring = False
             argname = ""
             continue
@@ -256,19 +288,15 @@ async def parse_call_arguments(args: str, global_ns, local_ns, depth) -> list:
         raise PYK_SyntaxError("expected a closing string quote")
 
     if argname:
-        args.append((argname, argument_isstring))
+        if argument_isstring:
+            argname = '"' + argname + '"'
+
+        args.append(argname)
 
     resp = []
-    for arg, isstring in args:
-        if isstring:
-            resp.append(arg)
-            continue
-
-        if PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] in arg:
-            resp.append(await call_function(arg, global_ns, local_ns, depth))
-        else:
-            v = await get_value_from_string(arg, global_ns, local_ns, depth)
-            resp.append(v)
+    for arg in args:
+        v = await get_value_from_string(arg, global_ns, local_ns, depth)
+        resp.append(v)
     
     return resp
 
@@ -307,6 +335,9 @@ async def compare_conditional(global_ns, local_ns, depth, arg1, operator=None, a
     
     if operator == PYK_KEYWORDS['PYK_CONTAINS']:
         return arg1 in arg2
+
+    if operator == PYK_KEYWORDS['PYK_NOTCONTAINS']:
+        return arg1 not in arg2
     
     raise PYK_ExecutionError("unknown operator")
     
@@ -321,8 +352,7 @@ async def parse_conditional(raw, global_ns, local_ns, depth):
     else:
         raise PYK_SyntaxError("Invalid conditional (unknown number of conditionals, check there are not spaces in function calls)")
 
-
-async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, skipto, depth):
+async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, skipto, depth, func):
     if skipto is not None:
         if isinstance(skipto, int):
             if lineno < skipto:
@@ -363,6 +393,10 @@ async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, 
         getter = line.split("=")
 
         if len(getter) < 2:
+            if PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] in line:
+                await call_function(line, global_ns, local_ns, depth)
+                return
+
             raise PYK_SyntaxError("declaring variable must have an assignment")
 
         if PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] in line:
@@ -386,65 +420,98 @@ async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, 
         resp = PYK_parse_return(line, global_ns, local_ns, depth)
         err = StopIteration(resp)
         raise err
+
+    if line.startswith(PYK_KEYWORDS['PYK_THROW']):
+        value = await get_value_from_string(line.replace(PYK_KEYWORDS['PYK_THROW'], "", 1).strip(), global_ns, local_ns, depth)
+        raise PYK_RaisedError(repr(value))
     
     if line.startswith(PYK_KEYWORDS['PYK_IF']):
         c = "\n".join(raw_code.splitlines()[lineno:])
         conditional_code = find_outer_brackets(c, skip_extra=True, include_brackets=False)
         _cond = find_outer_brackets(c, skip_extra=True)
+        excess = find_outer_brackets(c, skip_extra=True, return_excess=True)
         length = len(_cond.splitlines())
-        #if line.endswith(PYK_BRACKETS['PYK_CODE_IN']):
-        #    length -= 1
         
         found_one = False
         if await parse_conditional(line, global_ns, local_ns, depth):
             found_one = True
-            maybe_resp = await build_code_async(conditional_code, global_ns, local_ns, file=file, depth=depth)
+            maybe_resp = await build_code_async(conditional_code, global_ns, local_ns, file=file, depth=depth, func=func)
             if maybe_resp is not None:
                 raise StopIteration(maybe_resp)
         
-        
-        if line.endswith(PYK_BRACKETS['PYK_CODE_IN']):
-            c = c.replace(line.rstrip(PYK_BRACKETS['PYK_CODE_IN']), "", 1)
-        else:
-            c = c.replace(line + "\n", "", 1)
-        c = c.replace(_cond, "", 1).strip()
-        
+        c = excess.strip()
+
         while c.startswith(PYK_KEYWORDS['PYK_ELIF']):
             conditional_code = find_outer_brackets(c, skip_extra=True, include_brackets=False)
             _cond = find_outer_brackets(c, skip_extra=True)
+            excess = find_outer_brackets(c, skip_extra=True, return_excess=True)
             length += len(_cond.splitlines())
             
-            if not found_one and parse_conditional(c.splitlines()[0], global_ns, local_ns, depth):
+            if not found_one and await parse_conditional(c.splitlines()[0], global_ns, local_ns, depth):
                 found_one = True
-                maybe_resp = await build_code_async(conditional_code, global_ns, local_ns, file=file, depth=depth)
+                maybe_resp = await build_code_async(conditional_code, global_ns, local_ns, file=file, depth=depth, func=func)
                 if maybe_resp is not None:
                     raise StopIteration(maybe_resp)
-            
-            ln = c.splitlines()[0]
-            if ln.endswith(PYK_BRACKETS['PYK_CODE_IN']):
-                c = c.replace(ln.rstrip(PYK_BRACKETS['PYK_CODE_IN']), "", 1)
-            else:
-                c = c.replace(ln + "\n", "", 1)
-            c = c.replace(_cond, "", 1).strip()
-        
+
+            c = excess.strip()
+
+
         if c.startswith(PYK_KEYWORDS['PYK_ELSE']):
-            conditional_code = find_outer_brackets(c, skip_extra=True, include_brackets=False)
-            _cond = find_outer_brackets(c, skip_extra=True)
+            v = c.replace(PYK_KEYWORDS['PYK_ELSE'], "", 1).strip()
+            conditional_code = find_outer_brackets(v, skip_extra=True, include_brackets=False)
+            _cond = find_outer_brackets(v, skip_extra=True)
             length += len(_cond.splitlines())
+
             if not found_one:
-                maybe_resp = await build_code_async(conditional_code, global_ns, local_ns, file=file, depth=depth)
+                maybe_resp = await build_code_async(conditional_code, global_ns, local_ns, file=file, depth=depth, func=func)
                 if maybe_resp is not None:
                     raise StopIteration(maybe_resp)
-        
+
+            c = excess.strip()
+
         return length + lineno
-    
+
+    if line.startswith(PYK_KEYWORDS['PYK_TRY']):
+        c = "\n".join(raw_code.splitlines()[lineno:])
+        maybe_error = find_outer_brackets(c, skip_extra=True, include_brackets=False)
+        maybe_error_code = find_outer_brackets(c, skip_extra=True)
+        rest = find_outer_brackets(c, skip_extra=True, return_excess=True).strip()
+        length = len(maybe_error_code.splitlines())
+        find_end = lineno + length
+        while not raw_code.splitlines()[find_end].strip():
+            find_end += 1
+
+        if not rest.startswith(PYK_KEYWORDS['PYK_CATCH']):
+            raise PYK_SyntaxError(f"\"{PYK_KEYWORDS['PYK_TRY']}\" block without a \"{PYK_KEYWORDS['PYK_CATCH']}\" statement")
+
+        catch_block = find_outer_brackets(rest, skip_extra=True, include_brackets=False).strip()
+        catch_end = len(find_outer_brackets(rest, skip_extra=True, include_brackets=True).splitlines()) + find_end
+
+        try:
+            await build_code_async(maybe_error, global_ns, local_ns, file=file, depth=depth, func=func)
+        except PYK_Error as error:
+            if local_ns:
+                local_ns.force_assign("error", error, True)
+            else:
+                global_ns.force_assign("error", error, True)
+
+            await build_code_async(catch_block, global_ns, local_ns, file=file, depth=depth, func=func)
+
+            if local_ns:
+                del local_ns['error']
+
+            else:
+                del global_ns['error']
+
+        return catch_end
+
     if PYK_BRACKETS['PYK_FUNCTIONCALL_IN'] in line:
         await call_function(line, global_ns, local_ns, depth)
         return
     
     raise PYK_SyntaxError("something isnt right: {0}".format(line))
 
-async def build_code_async(raw_code: str, global_namespace, local_namespace=None, file="<input>", depth=0):
+async def build_code_async(raw_code: str, global_namespace, local_namespace=None, file="<input>", depth=0, func=None):
     """
     allows for auto-awaiting of async functions
     :param raw_code: the code to evaluate
@@ -452,6 +519,7 @@ async def build_code_async(raw_code: str, global_namespace, local_namespace=None
     :param local_namespace: the local PYK_Namespace, if in a function context
     :param file: the file we are currently in
     :param depth: the parse depth, used to prevent python recursionerrors
+    :param func: the function we are currently in, used to gather stack traces
     :return: Optional[Any]
     """
     if depth >= 100:
@@ -461,17 +529,20 @@ async def build_code_async(raw_code: str, global_namespace, local_namespace=None
     skipto = None
 
     for index, line in enumerate(lines):
+        if skipto and index <= skipto:
+            continue
+
+        skipto = None
         try:
-            r = await _build_line(raw_code, line, index, global_namespace, local_namespace, locals(), file, skipto, depth)
+            r = await _build_line(raw_code, line, index, global_namespace, local_namespace, locals(), file, skipto, depth, func)
             if r is not None:
                 skipto = r
         except StopIteration as e:
             return e.args[0]
 
         except PYK_Error as error:
-            if isinstance(error, PYK_ExecutionError):
-                error.file = file
-                error.lineno = index
-                error.line = line
+            error.file = file
+            error.line = line
+            error.stack.append((func, line, file))
 
             raise

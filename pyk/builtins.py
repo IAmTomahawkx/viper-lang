@@ -3,7 +3,8 @@ import os
 from typing import Union, Any
 
 from .keywords import PYK_KEYWORDS
-from .objects import PYK_NONE
+from .objects import PYK_NONE, PYK_Error
+from .errors import PYK_ArgumentError
 
 
 def read(filepath: str) -> Union[str, type(PYK_NONE)]:
@@ -103,17 +104,43 @@ def to_num(s):
     except:
         return float(s)
 
-builtins = {
-    "read": read,
-    "write": write,
+def stack(error: PYK_Error):
+    """
+    utility for getting a traceback from an error
+    :param error: the error
+    :return: str
+    """
+    if not isinstance(error, PYK_Error):
+        raise PYK_ArgumentError("expected an error, got {0!r}".format(error))
+
+    return error.format_stack()
+
+def fmt(string: str, *args, **kwargs):
+    return string.format(*args, **kwargs)
+
+
+safe_builtins = {
     "say": say,
     "string": str,
     "boolean": bool,
     "number": to_num,
     "choice": choice,
     "randnum": randnum,
-    "writeline": add_line,
-    "readrandline": randline
+    "stack": stack,
+    "format": fmt
 }
-builtins = {a: (b, False) for a, b in builtins.items()}
+
+unsafe_builtins = {
+    "read": read,
+    "write": write,
+    "writeline": add_line,
+    "readrandline": randline,
+    **safe_builtins
+}
+
+def get_builtins(safety=False):
+    if safety:
+        return {a: (b, False) for a, b in safe_builtins.items()}
+
+    return {a: (b, False) for a, b in unsafe_builtins.items()}
 

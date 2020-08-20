@@ -10,6 +10,9 @@ class PYKNamespace(dict):
 
     def buildmode(self, state: bool):
         self.__buildmode = state
+
+    def force_assign(self, key: str, value, static: bool=False):
+        dict.__setitem__(self, key, (value, static))
     
     def get(self, key, default=None):
         try:
@@ -48,7 +51,8 @@ def find_outer_brackets(
     bracket_in: str = None,
     bracket_out: str = None,
     include_brackets: bool = True,
-    skip_extra: bool = False
+    skip_extra: bool = False,
+    return_excess: bool = False
     ) -> str:
     """
     returns code up to the outermost bracket
@@ -57,7 +61,7 @@ def find_outer_brackets(
     bracket_out = bracket_out or PYK_BRACKETS['PYK_CODE_OUT']
     
     raw_code = raw_code.strip()
-    iterator = iter(raw_code)
+    iterator = enumerate(raw_code)
     output = ""
     level = 0
     
@@ -66,10 +70,10 @@ def find_outer_brackets(
             raise PYK_SyntaxError("Start character, '{0}', not found".format(bracket_in))
         
         else:
-            char = next(iterator)
+            _, char = next(iterator)
             try:
                 while char != bracket_in:
-                    char = next(iterator)
+                    _, char = next(iterator)
                 
                 if include_brackets:
                     output += bracket_in
@@ -77,7 +81,7 @@ def find_outer_brackets(
             except StopIteration:
                 raise PYK_SyntaxError("Start character, '{0}', not found".format(bracket_in))
     
-    for char in iterator:
+    for index, char in iterator:
         if include_brackets:
             output += char
         
@@ -91,6 +95,9 @@ def find_outer_brackets(
         if char == bracket_out:
             level -= 1
             if level == 0:
+                if return_excess:
+                    return raw_code[index+1:]
+
                 return output
         
         if not include_brackets:

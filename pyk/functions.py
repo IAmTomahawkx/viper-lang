@@ -64,6 +64,9 @@ class PYKFunction(PYKObject):
         self._code = find_outer_brackets(code, skip_extra=True, include_brackets=False)
         self.global_ns = namespace
         self.init()
+
+    def __repr__(self):
+        return "<Function {0} in file {1}>".format(self.name, self.file)
     
     async def Call(self, *args, depth=None):
         args = list(reversed(args))
@@ -85,7 +88,7 @@ class PYKFunction(PYKObject):
             raise PYK_ArgumentError("Too many arguments passed to " + self.name)
         
         ns.buildmode(False)
-        resp = await parser.build_code_async(self._code, self.global_ns, ns, self.file, depth+1)
+        resp = await parser.build_code_async(self._code, self.global_ns, ns, self.file, depth+1, func=self)
         return resp
 
 from . import parser
