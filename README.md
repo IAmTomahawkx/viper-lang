@@ -2,6 +2,7 @@
 pyk is a simple, easy to understand language with easy integration capabilities.
 
 ## Install
+pyk is available for python 3.6+. \
 pyk is not available through pypi, install can be done through the following:
 ```
 pip install -U git+https://github.com/IAmTomahawkx/pyk
@@ -12,25 +13,31 @@ import pyk
 ```
 
 ## Python Usage
-To use pyk in your application, make use of the two eval methods, pyk.eval and pyk.eval_file functions
+To use pyk in your application, make use of the two eval methods, pyk.eval and pyk.eval_file functions. These functions
+are asynchronous, and must be run using asyncio, whether that be through the `await` keyword, or something such as `asyncio.run`. \
+The asyncio docs can be found [Here](https://docs.python.org/3/library/asyncio.html#module-asyncio)
 ```python
 import pyk
+import asyncio
 code = '$myvar = "hi"'
-pyk.eval(code)
+asyncio.run(pyk.eval(code))
 ```
 or
 ```python
+import asyncio
 import pyk
-pyk.eval_file("myfile.pyk")
+asyncio.run(pyk.eval_file("myfile.pyk"))
 ```
 
 you can also pass defaults to be injected into the namespace, as such
 ```python
+import asyncio
 import pyk
-pyk.eval("say($myvar)", {"myvar": "blue"})
+asyncio.run(pyk.eval("say($myvar)", {"myvar": "blue"}))
 ```
 another way to pass defaults is to pass a pyk namespace to the eval
 ```python
+import asyncio
 import pyk
 namespace = pyk.PYKNamespace()
 namespace['myvar'] = "blue"
@@ -38,7 +45,32 @@ namespace['myvar'] = "blue"
 # creating a static variable
 namespace['mystaticvar'] = "red", True
 
-pyk.eval("say($myvar)", namespace=namespace)
+asyncio.run(pyk.eval("say($myvar)", namespace=namespace))
+```
+
+you can disable "unsafe" builtins such as file reading/writing by passing the `safe` keyword to `pyk.eval`/`pyk.eval_file`.
+```python
+import asyncio
+import pyk
+
+asyncio.run(pyk.eval('$myvar = read("names.txt")', safe=True)) # raises PYK_NameError, 
+# as the variable `read` doesnt exist due to safe mode
+```
+Speaking of errors, PYK stack traces are now available. They can be accessed by printing out `error.format_stack()` on any PYK_Error.
+```python
+import asyncio
+import pyk
+
+try:
+    asyncio.run(pyk.eval("blah"))
+except pyk.PYK_Error as e:
+    print(e.format_stack())
+```
+will print out:
+```
+File <string>, top-level:
+    blah
+something isnt right: blah
 ```
 
 # Syntax
@@ -120,4 +152,26 @@ main()
 ```
 
 # Customizing pyk
-most of pyk can be edited by editing `pyk/keywords.py` file. Most of the options are pretty self explanatory.
+most of pyk can be edited by editing `pyk/keywords.py` file. Most of the options are pretty self explanatory. \
+These can also be changed at runtime, by importing the keywords file and changing the dictionaries
+```python
+import pyk.keywords
+pyk.keywords.PYK_KEYWORDS['PYK_VARMARKER'] = "%"
+# variables will now be accessed with % instead of $
+```
+
+# Discord.py integration
+to make things easier, the `pyk.exts.discord` module makes it easy to pass safe objects, with limited accessibility, to pyk,
+making it easy to pass discord.py models (indirectly) to your users, without fear of leaking your token and/or other sensitive data. \
+Simply pass a discord.py model to its respective `exts.discord` counterpart, and pass that to your pyk namespace
+```python
+import pyk
+from pyk.exts import discord as pyk_discord
+
+async def on_message(message):
+    namespace = pyk.PYKNamespace()
+    safe_message = pyk_discord.SafeAccessMessage(message)
+    namespace['msg'] = safe_message
+
+    await pyk.eval('say($msg.channel.send("hi"))', namespace=namespace, safe=True)
+```
