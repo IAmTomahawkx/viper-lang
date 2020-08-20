@@ -2,9 +2,6 @@ from setuptools import setup
 import re
 
 requirements = []
-#with open('requirements.txt') as f:
-#  requirements = f.read().splitlines()
-
 # PYK has no requirements!
 
 with open('pyk/__init__.py') as f:
@@ -30,7 +27,7 @@ if version.endswith(('a', 'b', 'rc')):
     except Exception:
         pass
 
-with open('README.md') as f:
+with open('README.rst') as f:
     readme = f.read()
 
 setup(name='pyk',
@@ -46,7 +43,7 @@ setup(name='pyk',
       license='MIT',
       description='a simple, easy to understand language with easy integration capabilities.',
       long_description=readme,
-      long_description_content_type="text/markdown",
+      long_description_content_type="text/x-rst",
       include_package_data=True,
       install_requires=requirements,
       python_requires='>=3.6.0',
