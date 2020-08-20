@@ -13,11 +13,13 @@ Install
 --------
 pyk is available for python 3.6+. \
 pyk is not available through pypi, install can be done through the following:
-.. code:: sh
+
+.. code-block:: shell
     pip install -U git+https://github.com/IAmTomahawkx/pyk
 
 and can be imported into your project
-.. code:: py
+
+.. code-block:: python
     import pyk
 
 Python Usage
@@ -25,7 +27,8 @@ Python Usage
 To use pyk in your application, make use of the two eval methods, pyk.eval and pyk.eval_file functions. These functions
 are asynchronous, and must be run using asyncio, whether that be through the `await` keyword, or something such as `asyncio.run`. \
 The asyncio docs can be found [Here](https://docs.python.org/3/library/asyncio.html#module-asyncio)
-.. code:: py
+
+.. code-block:: python
     import pyk
     import asyncio
     code = '$myvar = "hi"'
@@ -33,21 +36,21 @@ The asyncio docs can be found [Here](https://docs.python.org/3/library/asyncio.h
 
 or
 
-.. code:: py
+.. code-block:: python
     import asyncio
     import pyk
     asyncio.run(pyk.eval_file("myfile.pyk"))
 
 you can also pass defaults to be injected into the namespace, as such
 
-.. code:: py
+.. code-block:: python
     import asyncio
     import pyk
     asyncio.run(pyk.eval("say($myvar)", {"myvar": "blue"}))
 
 another way to pass defaults is to pass a pyk namespace to the eval
 
-.. code:: py
+.. code-block:: python
     import asyncio
     import pyk
     namespace = pyk.PYKNamespace()
@@ -60,7 +63,7 @@ another way to pass defaults is to pass a pyk namespace to the eval
 
 you can disable "unsafe" builtins such as file reading/writing by passing the `safe` keyword to `pyk.eval`/`pyk.eval_file`.
 
-.. code:: py
+.. code-block:: python
     import asyncio
     import pyk
 
@@ -69,7 +72,7 @@ you can disable "unsafe" builtins such as file reading/writing by passing the `s
 
 Speaking of errors, PYK stack traces are now available. They can be accessed by printing out `error.format_stack()` on any PYK_Error.
 
-.. code:: py
+.. code-block:: python
     import asyncio
     import pyk
 
@@ -80,7 +83,7 @@ Speaking of errors, PYK stack traces are now available. They can be accessed by 
 
 will print out:
 
-.. code::
+.. code-block:: python
     File <string>, top-level:
         blah
     something isnt right: blah
@@ -94,8 +97,7 @@ variables are set like in python, but with a dollar sign ($) in front of the nam
 the name with a dollar sign ($) in front. variables can be marked as `static` by putting `static ` in front of the variable
 name. static variables cannot be changed by anything other than intervention in python code
 
-.. code::
-
+.. code-block::
     $myvar = "red"
 
     static $mystaticvar = "blue"
@@ -107,7 +109,7 @@ functions
 
 functions are created either in python and passed to the namespace, or in pyk. functions created in pyk follow this syntax
 
-.. code::
+.. code-block::
     func myfunc() {
         return
     }
@@ -115,21 +117,21 @@ functions are created either in python and passed to the namespace, or in pyk. f
 quite similar to python, with a few key differences. you may put `static ` in front of the `func` keyword to mark the function as static,
 preventing it from being reassigned.
 
-.. code::
+.. code-block::
     static func myfunc() {
         return
     }
 
 arguments look like the following
 
-.. code::
+.. code-block::
     func myfunc(argument1, argument2) {
         return
     }
 
 an argument can be made optional by inserting a question mark (?) in front of the argument name, E.x.
 
-.. code::
+.. code-block::
     func myfunc(argument1, ?optional_arg1) {
         return
     }
@@ -138,7 +140,7 @@ optional arguments that are not given will be passed as a `none` object (note th
 
 functions are called the same as in python:
 
-.. code::
+.. code-block::
     func myfunc() {
         return
     }
@@ -153,7 +155,7 @@ there is also `true` / `false`, which are the pyk booleans (AKA python booleans)
 a full example
 ----------------
 
-.. code::
+.. code-block::
     static $globalvar = "hi"
 
     func name(arg, ?arg1) {
@@ -180,7 +182,7 @@ Customizing pyk
 most of pyk can be edited by editing `pyk/keywords.py` file. Most of the options are pretty self explanatory. \
 These can also be changed at runtime, by importing the keywords file and changing the dictionaries
 
-.. code:: py
+.. code-block:: python
     import pyk.keywords
     pyk.keywords.PYK_KEYWORDS['PYK_VARMARKER'] = "%"
     # variables will now be accessed with % instead of $
@@ -191,7 +193,7 @@ to make things easier, the `pyk.exts.discord` module makes it easy to pass safe 
 making it easy to pass discord.py models (indirectly) to your users, without fear of leaking your token and/or other sensitive data. \
 Simply pass a discord.py model to its respective `exts.discord` counterpart, and pass that to your pyk namespace
 
-.. code:: py
+.. code-block:: python
     import pyk
     from pyk.exts import discord as pyk_discord
 
