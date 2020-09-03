@@ -1,5 +1,5 @@
-.. image:: https://travis-ci.org/IAmTomahawkx/viper-lang.svg?branch=master
-    :target: https://travis-ci.org/IAmTomahawkx/viper-lang
+.. image:: https://travis-ci.org/IAmTomahawkx/pyk.svg?branch=master
+    :target: https://travis-ci.org/IAmTomahawkx/pyk
     :alt: Build Status
 .. image:: https://discord.com/api/guilds/561043858402836482/embed.png
    :target: https://discord.gg/cEAxG8A
