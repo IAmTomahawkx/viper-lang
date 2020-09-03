@@ -30,7 +30,7 @@ if version.endswith(('a', 'b', 'rc')):
 with open('README.rst') as f:
     readme = f.read()
 
-setup(name='Viper',
+setup(name='viper-lang',
       author='IAmTomahawkx',
       author_email="iamtomahawkx@gmail.com",
       url='https://github.com/IAmTomahawkx/viper-lang',
