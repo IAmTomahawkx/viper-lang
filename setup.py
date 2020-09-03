@@ -2,9 +2,9 @@ from setuptools import setup
 import re
 
 requirements = []
-# PYK has no requirements!
+# Viper has no requirements!
 
-with open('pyk/__init__.py') as f:
+with open('viper/__init__.py') as f:
     version = re.search(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', f.read(), re.MULTILINE).group(1)
 
 if not version:
@@ -30,16 +30,16 @@ if version.endswith(('a', 'b', 'rc')):
 with open('README.rst') as f:
     readme = f.read()
 
-setup(name='pyk',
+setup(name='Viper',
       author='IAmTomahawkx',
       author_email="iamtomahawkx@gmail.com",
-      url='https://github.com/IAmTomahawkx/pyk',
+      url='https://github.com/IAmTomahawkx/viper-lang',
       project_urls={
 #        "Documentation": "",
-        "Issue tracker": "https://github.com/IAmTomahawkx/pyk/issues",
+        "Issue tracker": "https://github.com/IAmTomahawkx/viper-lang/issues",
       },
       version=version,
-      packages=['pyk', 'pyk.exts'],
+      packages=['viper', 'viper.exts'],
       license='MIT',
       description='a simple, easy to understand language with easy integration capabilities.',
       long_description=readme,
@@ -48,7 +48,7 @@ setup(name='pyk',
       install_requires=requirements,
       python_requires='>=3.6.0',
       classifiers=[
-        'Development Status :: Unstable',
+        'Development Status :: 3 Beta',
         'License :: MIT License',
         'Intended Audience :: Developers',
         'Natural Language :: English',

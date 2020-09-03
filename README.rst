@@ -1,92 +1,92 @@
-.. image:: https://travis-ci.org/IAmTomahawkx/pyk.svg?branch=master
-    :target: https://travis-ci.org/IAmTomahawkx/pyk
+.. image:: https://travis-ci.org/IAmTomahawkx/viper-lang.svg?branch=master
+    :target: https://travis-ci.org/IAmTomahawkx/viper-lang
     :alt: Build Status
 .. image:: https://discord.com/api/guilds/561043858402836482/embed.png
    :target: https://discord.gg/cEAxG8A
    :alt: Discord server invite
 
-PYK
+Viper
 =====
-pyk is a simple, easy to understand language with easy integration capabilities.
+Viper is a simple, easy to understand language with easy integration capabilities.
 
 Install
 --------
-| pyk is available for python 3.6+.
-| pyk is not available through pypi, install can be done through the following:
+| Viper is available for python 3.6+.
+| Viper is not available through pypi, install can be done through the following:
 
 .. code:: sh
 
-    pip install -U git+https://github.com/IAmTomahawkx/pyk
+    pip install -U git+https://github.com/IAmTomahawkx/viper-lang
 
 and can be imported into your project
 
 .. code:: py
 
-    import pyk
+    import viper
 
 Python Usage
 -------------
-To use pyk in your application, make use of the two eval methods, pyk.eval and pyk.eval_file functions. These functions
+To use Viper in your application, make use of the two eval methods, viper.eval and viper.eval_file functions. These functions
 are asynchronous, and must be run using asyncio, whether that be through the `await` keyword, or something such as `asyncio.run`. \
-The asyncio docs can be found [Here](https://docs.python.org/3/library/asyncio.html#module-asyncio)
+The asyncio docs can be found `Here <https://docs.python.org/3/library/asyncio.html#module-asyncio/>`_
 
 .. code-block:: python
 
-    import pyk
+    import viper
     import asyncio
     code = '$myvar = "hi"'
-    asyncio.run(pyk.eval(code))
+    asyncio.run(viper.eval(code))
 
 or
 
 .. code-block:: python
 
     import asyncio
-    import pyk
-    asyncio.run(pyk.eval_file("myfile.pyk"))
+    import viper
+    asyncio.run(viper.eval_file("myfile.vp"))
 
 you can also pass defaults to be injected into the namespace, as such
 
 .. code-block:: python
 
     import asyncio
-    import pyk
-    asyncio.run(pyk.eval("say($myvar)", {"myvar": "blue"}))
+    import viper
+    asyncio.run(viper.eval("say($myvar)", {"myvar": "blue"}))
 
-another way to pass defaults is to pass a pyk namespace to the eval
+another way to pass defaults is to pass a Viper namespace to the eval
 
 .. code-block:: python
 
     import asyncio
-    import pyk
-    namespace = pyk.PYKNamespace()
+    import viper
+    namespace = viper.VPNamespace()
     namespace['myvar'] = "blue"
 
     # creating a static variable
     namespace['mystaticvar'] = "red", True
 
-    asyncio.run(pyk.eval("say($myvar)", namespace=namespace))
+    asyncio.run(viper.eval("say($myvar)", namespace=namespace))
 
-you can disable "unsafe" builtins such as file reading/writing by passing the `safe` keyword to `pyk.eval`/`pyk.eval_file`.
+you can disable "unsafe" builtins such as file reading/writing by passing the `safe` keyword to `viper.eval`/`viper.eval_file`.
 
 .. code-block:: python
 
     import asyncio
-    import pyk
+    import viper
 
-    asyncio.run(pyk.eval('$myvar = read("names.txt")', safe=True)) # raises PYK_NameError,
+    asyncio.run(viper.eval('$myvar = read("names.txt")', safe=True)) # raises VP_NameError,
     # as the variable `read` doesnt exist due to safe mode
 
-Speaking of errors, PYK stack traces are now available. They can be accessed by printing out `error.format_stack()` on any PYK_Error.
+Speaking of errors, Viper stack traces are now available. They can be accessed by printing out `error.format_stack()` on any VP_Error.
 
 .. code-block:: python
 
     import asyncio
-    import pyk
+    import viper
 
     try:
-        asyncio.run(pyk.eval("blah"))
-    except pyk.PYK_Error as e:
+        asyncio.run(viper.eval("blah"))
+    except viper.VP_Error as e:
         print(e.format_stack())
 
 will print out:
@@ -117,7 +117,7 @@ name. static variables cannot be changed by anything other than intervention in 
 functions
 ~~~~~~~~~~
 
-functions are created either in python and passed to the namespace, or in pyk. functions created in pyk follow this syntax
+functions are created either in python and passed to the namespace, or in viper. functions created in viper follow this syntax
 
 .. code-block::
 
@@ -163,9 +163,9 @@ functions are called the same as in python:
 
 builtins
 ~~~~~~~~~
-there are several built in functions that will be available inside of pyk. They can be seen in the `pyk/builtins.py` file.
+there are several built in functions that will be available inside of viper. They can be seen in the `viper/builtins.py` file.
 there are a couple builtin not defined in this file, the `namespace` variable, which points back to the global namespace.
-there is also `true` / `false`, which are the pyk booleans (AKA python booleans).
+there is also `true` / `false`, which are the viper booleans (AKA python booleans).
 
 a full example
 ----------------
@@ -193,31 +193,31 @@ a full example
     }
     main()
 
-Customizing pyk
+Customizing viper
 -----------------
-most of pyk can be edited by editing `pyk/keywords.py` file. Most of the options are pretty self explanatory. \
+most of viper can be edited by editing `viper/keywords.py` file. Most of the options are pretty self explanatory. \
 These can also be changed at runtime, by importing the keywords file and changing the dictionaries
 
 .. code:: py
 
-    import pyk.keywords
-    pyk.keywords.PYK_KEYWORDS['PYK_VARMARKER'] = "%"
+    import viper.keywords
+    viper.keywords.VP_KEYWORDS['VP_VARMARKER'] = "%"
     # variables will now be accessed with % instead of $
 
 Discord.py integration
 -----------------------
-to make things easier, the `pyk.exts.discord` module makes it easy to pass safe objects, with limited accessibility, to pyk,
+to make things easier, the `viper.exts.discord` module makes it easy to pass safe objects, with limited accessibility, to viper,
 making it easy to pass discord.py models (indirectly) to your users, without fear of leaking your token and/or other sensitive data. \
-Simply pass a discord.py model to its respective `exts.discord` counterpart, and pass that to your pyk namespace
+Simply pass a discord.py model to its respective `exts.discord` counterpart, and pass that to your viper namespace
 
 .. code:: py
 
-    import pyk
-    from pyk.exts import discord as pyk_discord
+    import viper
+    from viper.exts import discord as viper_discord
 
     async def on_message(message):
-        namespace = pyk.PYKNamespace()
-        safe_message = pyk_discord.SafeAccessMessage(message)
+        namespace = viper.VPNamespace()
+        safe_message = viper_discord.SafeAccessMessage(message)
         namespace['msg'] = safe_message
 
-        await pyk.eval('say($msg.channel.send("hi"))', namespace=namespace, safe=True)
+        await viper.eval('say($msg.channel.send("hi"))', namespace=namespace, safe=True)

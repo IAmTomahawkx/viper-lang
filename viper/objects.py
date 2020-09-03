@@ -1,8 +1,6 @@
-from .keywords import PYK_KEYWORDS
+VP_NONE = None
 
-PYK_NONE = None
-
-class PYKObject:
+class VPObject:
     __static = False
     def __init__(self, *args, **kwargs):
         self.init(*args, **kwargs)
@@ -11,25 +9,25 @@ class PYKObject:
         pass
 
 
-class _PYK_NULL(PYKObject):
+class _VP_NULL(VPObject):
     __slots__ = tuple()
     def __new__(cls):
-        global PYK_NONE
-        if PYK_NONE is not None:
-            return PYK_NONE
+        global VP_NONE
+        if VP_NONE is not None:
+            return VP_NONE
         
-        PYK_NONE = object.__new__(cls)
-        return PYK_NONE
+        VP_NONE = object.__new__(cls)
+        return VP_NONE
     
     def __str__(self):
         return "null"
     
     __repr__ = __str__
 
-_PYK_NULL()
+_VP_NULL()
 
 
-class PYK_Error(Exception):
+class VP_Error(Exception):
     def __init__(self, *args, **kwargs):
         self.init(*args, **kwargs)
         super().__init__(*args)
@@ -56,11 +54,11 @@ class PYK_Error(Exception):
         return resp.strip()
 
 
-class PYK_LIST(PYKObject):
+class VP_LIST(VPObject):
     pass
 
-class PyPYK_Model:
+class PyVP_Model:
     def __dir__(self):
-        dirs = super(PyPYK_Model, self).__dir__()
-        dirs = [d for d in dirs if not d.startswith("_")]
+        dirs = super(PyVP_Model, self).__dir__()
+        dirs = [d for d in dirs if not d.startswith("_")] # hide attributes that cant be accessed
         return dirs

@@ -2,12 +2,11 @@ import random
 import os
 from typing import Union, Any
 
-from .keywords import PYK_KEYWORDS
-from .objects import PYK_NONE, PYK_Error
-from .errors import PYK_ArgumentError
+from .objects import VP_NONE, VP_Error
+from .errors import VP_ArgumentError
 
 
-def read(filepath: str) -> Union[str, type(PYK_NONE)]:
+def read(filepath: str) -> Union[str, type(VP_NONE)]:
     """
     reads a file and returns the contents (not a byte file)
     :param filepath: :class:`str` the filepath to read
@@ -18,33 +17,33 @@ def read(filepath: str) -> Union[str, type(PYK_NONE)]:
             return f.read()
 
     else:
-        return PYK_NONE
+        return VP_NONE
 
 
-def randline(filepath: str) -> Union[str, type(PYK_NONE)]:
+def randline(filepath: str) -> Union[str, type(VP_NONE)]:
     """
     Reads a file and returns a random line
     :param filepath: :class:`str` the filepath to read
-    :return: :class:`str` or :class:`PYK_NONE` if the file is empty
+    :return: :class:`str` or :class:`VP_NONE` if the file is empty
     """
     if os.path.exists(filepath):
         with open(filepath) as f:
             lines = f.readlines()
             if not lines:
-                return PYK_NONE
+                return VP_NONE
 
             return random.choice(lines)
 
     else:
-        return PYK_NONE
+        return VP_NONE
 
 
-def write(filepath: str, content: str) -> type(PYK_NONE):
+def write(filepath: str, content: str) -> type(VP_NONE):
     """
     writes the content to the given filepath
     :param filepath: the file to write to
     :param content:
-    :return: :class:`PYK_NONE`
+    :return: :class:`VP_NONE`
     """
     if not os.path.exists(os.path.dirname(filepath)):
         os.makedirs(os.path.dirname(filepath))
@@ -52,14 +51,14 @@ def write(filepath: str, content: str) -> type(PYK_NONE):
     with open(filepath, "w") as f:
         f.write(content)
 
-    return PYK_NONE
+    return VP_NONE
 
-def add_line(filepath: str, content: str) -> type(PYK_NONE):
+def add_line(filepath: str, content: str) -> type(VP_NONE):
     """
     adds a line to a pre-existing file
     :param filepath: :class:`str` the file path to write to
     :param content: :class:`str` the content to write
-    :return: :class:`PYK_NONE`
+    :return: :class:`VP_NONE`
     """
     if not os.path.exists(os.path.dirname(filepath)):
         os.makedirs(os.path.dirname(filepath))
@@ -67,7 +66,7 @@ def add_line(filepath: str, content: str) -> type(PYK_NONE):
     with open(filepath, "a") as f:
         f.write(content)
 
-    return PYK_NONE
+    return VP_NONE
 
 def randnum(min: int, max: int) -> int:
     """
@@ -82,10 +81,10 @@ def choice(*choices: Any) -> Any:
     """
     returns a random choice from the given input. takes any number of arguments.
     :param choices: the choices to pick from
-    :return: Any. the chosen item from the input arguments. returns :class:`PYK_NONE` if no arguments given
+    :return: Any. the chosen item from the input arguments. returns :class:`VP_NONE` if no arguments given
     """
     if not choices:
-        return PYK_NONE
+        return VP_NONE
     
     return random.choice(choices)
 
@@ -96,7 +95,7 @@ def say(*args):
     :return:
     """
     print(*args)
-    return PYK_NONE
+    return VP_NONE
 
 def to_num(s):
     try:
@@ -104,14 +103,14 @@ def to_num(s):
     except:
         return float(s)
 
-def stack(error: PYK_Error):
+def stack(error: VP_Error):
     """
     utility for getting a traceback from an error
     :param error: the error
     :return: str
     """
-    if not isinstance(error, PYK_Error):
-        raise PYK_ArgumentError("expected an error, got {0!r}".format(error))
+    if not isinstance(error, VP_Error):
+        raise VP_ArgumentError("expected an error, got {0!r}".format(error))
 
     return error.format_stack()
 

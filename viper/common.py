@@ -1,12 +1,12 @@
 from .errors import *
 from .keywords import *
 
-class PYKNamespace(dict):
+class VPNamespace(dict):
     __buildmode = False
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self[PYK_KEYWORDS['PYK_TRUE']] = True, True
-        self[PYK_KEYWORDS['PYK_FALSE']] = False, True
+        self[VIPER_KEYWORDS['VIPER_TRUE']] = True, True
+        self[VIPER_KEYWORDS['VIPER_FALSE']] = False, True
 
     def buildmode(self, state: bool):
         self.__buildmode = state
@@ -42,7 +42,7 @@ class PYKNamespace(dict):
         
         else:
             if exists[1]:
-                raise PYK_StaticError(key)
+                raise VP_StaticError(key)
             
             dict.__setitem__(self, key, (value, static))
 
@@ -57,8 +57,8 @@ def find_outer_brackets(
     """
     returns code up to the outermost bracket
     """
-    bracket_in = bracket_in or PYK_BRACKETS['PYK_CODE_IN']
-    bracket_out = bracket_out or PYK_BRACKETS['PYK_CODE_OUT']
+    bracket_in = bracket_in or VIPER_BRACKETS['VIPER_CODE_IN']
+    bracket_out = bracket_out or VIPER_BRACKETS['VIPER_CODE_OUT']
     
     raw_code = raw_code.strip()
     iterator = enumerate(raw_code)
@@ -67,7 +67,7 @@ def find_outer_brackets(
     
     if not raw_code.startswith(bracket_in):
         if not skip_extra:
-            raise PYK_SyntaxError("Start character, '{0}', not found".format(bracket_in))
+            raise VP_SyntaxError("Start character, '{0}', not found".format(bracket_in))
         
         else:
             _, char = next(iterator)
@@ -79,7 +79,7 @@ def find_outer_brackets(
                     output += bracket_in
                 level += 1
             except StopIteration:
-                raise PYK_SyntaxError("Start character, '{0}', not found".format(bracket_in))
+                raise VP_SyntaxError("Start character, '{0}', not found".format(bracket_in))
     
     for index, char in iterator:
         if include_brackets:
@@ -103,4 +103,4 @@ def find_outer_brackets(
         if not include_brackets:
             output += char
     
-    raise PYK_SyntaxError("End character, '{0}', not found".format(bracket_out))
+    raise VP_SyntaxError("End character, '{0}', not found".format(bracket_out))

@@ -4,15 +4,15 @@ import asyncio
 
 import discord as dpy
 
-import pyk
-from pyk.exts import discord
+import viper
+from viper.exts import discord
 
-basic_test = os.path.join("tests", "test_script.pyk")
-discordpy_test = os.path.join("tests", "discordpy_script_test.pyk")
+basic_test = os.path.join("tests", "test_script.vp")
+discordpy_test = os.path.join("tests", "discordpy_script_test.vp")
 
 loop = asyncio.get_event_loop()
 
-loop.run_until_complete(pyk.eval_file(basic_test)) # run the basic script
+loop.run_until_complete(viper.eval_file(basic_test)) # run the basic script
 
 class MockDpyObject:
     def __init__(self, **kwargs):
@@ -74,7 +74,7 @@ class MockDpyContext:
             author=usr
         )
 
-ns = pyk.PYKNamespace()
-ns['ctx'] = discord.SafeAccessContext(MockDpyContext())
+ns = viper.VPNamespace()
+ns['ctx'] = discord.SafeAccessContext(MockDpyContext()) # noqa
 
-loop.run_until_complete(pyk.eval_file(discordpy_test, namespace=ns, safe=True)) # run the discord ext script
+loop.run_until_complete(viper.eval_file(discordpy_test, namespace=ns, safe=True)) # run the discord ext script
