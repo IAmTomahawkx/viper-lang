@@ -1,9 +1,15 @@
-.. image:: https://travis-ci.org/IAmTomahawkx/pyk.svg?branch=master
-    :target: https://travis-ci.org/IAmTomahawkx/pyk
+.. image:: https://travis-ci.org/IAmTomahawkx/viper-lang.svg?branch=master
+    :target: https://travis-ci.org/IAmTomahawkx/viper-lang
     :alt: Build Status
 .. image:: https://discord.com/api/guilds/561043858402836482/embed.png
    :target: https://discord.gg/cEAxG8A
    :alt: Discord server invite
+.. image:: https://img.shields.io/pypi/v/viper-lang.svg
+   :target: https://pypi.python.org/pypi/viper-lang
+   :alt: PyPI version info
+.. image:: https://img.shields.io/pypi/pyversions/viper-lang.svg
+   :target: https://pypi.python.org/pypi/viper-lang
+   :alt: PyPI supported Python versions
 
 Viper
 =====
@@ -12,13 +18,19 @@ Viper is a simple, easy to understand language with easy integration capabilitie
 Install
 --------
 | Viper is available for python 3.6+.
-| Viper is not available through pypi, install can be done through the following:
+| Viper is now on pypi! It can be installed via
+
+.. code:: sh
+
+    python -m pip install viper-lang
+
+The dev version can be installed via
 
 .. code:: sh
 
     pip install -U git+https://github.com/IAmTomahawkx/viper-lang
 
-and can be imported into your project
+And can be imported into your project
 
 .. code:: py
 
@@ -28,7 +40,7 @@ Python Usage
 -------------
 To use Viper in your application, make use of the two eval methods, viper.eval and viper.eval_file functions. These functions
 are asynchronous, and must be run using asyncio, whether that be through the `await` keyword, or something such as `asyncio.run`. \
-The asyncio docs can be found `Here <https://docs.python.org/3/library/asyncio.html#module-asyncio/>`_
+The asyncio docs can be found `here <https://docs.python.org/3/library/asyncio.html#module-asyncio/>`_.
 
 .. code-block:: python
 
@@ -95,7 +107,8 @@ will print out:
 
     File <string>, top-level:
         blah
-    something isnt right: blah
+
+    SyntaxError: blah
 
 Syntax
 ---------
@@ -182,7 +195,7 @@ a full example
         else if ($var is not 1) {
             $var = "stuff"
         }
-        default {
+        else {
             $var = none
         }
     }
@@ -201,7 +214,7 @@ These can also be changed at runtime, by importing the keywords file and changin
 .. code:: py
 
     import viper.keywords
-    viper.keywords.VP_KEYWORDS['VP_VARMARKER'] = "%"
+    viper.keywords.VIPER_KEYWORDS['VIPER_VARMARKER'] = "%"
     # variables will now be accessed with % instead of $
 
 Discord.py integration

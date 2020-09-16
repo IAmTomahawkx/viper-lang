@@ -366,6 +366,7 @@ async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, 
                 return
     
     line = line.strip()
+
     if line.startswith(VIPER_KEYWORDS['VIPER_COMMENT']) or not line:
         return
     
@@ -417,9 +418,8 @@ async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, 
         if local_ns is None:
             raise VP_SyntaxError("return outside of function")
         
-        resp = viper_parse_return(line, global_ns, local_ns, depth)
-        err = StopIteration(resp)
-        raise err
+        resp = await viper_parse_return(line, global_ns, local_ns, depth)
+        raise StopAsyncIteration(resp)
 
     if line.startswith(VIPER_KEYWORDS['VIPER_THROW']):
         value = await get_value_from_string(line.replace(VIPER_KEYWORDS['VIPER_THROW'], "", 1).strip(), global_ns, local_ns, depth)
@@ -431,7 +431,7 @@ async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, 
         _cond = find_outer_brackets(c, skip_extra=True)
         excess = find_outer_brackets(c, skip_extra=True, return_excess=True)
         length = len(_cond.splitlines())
-        
+
         found_one = False
         if await parse_conditional(line, global_ns, local_ns, depth):
             found_one = True
@@ -440,12 +440,17 @@ async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, 
                 raise StopIteration(maybe_resp)
         
         c = excess.strip()
+        if not c.startswith((VIPER_KEYWORDS['VIPER_ELIF'], VIPER_KEYWORDS['VIPER_ELSE'])) and _cond.startswith(VIPER_BRACKETS['VIPER_CODE_IN'] + "\n"):
+            length -= 1 # this is for a case of `if (conditional) {`
 
         while c.startswith(VIPER_KEYWORDS['VIPER_ELIF']):
             conditional_code = find_outer_brackets(c, skip_extra=True, include_brackets=False)
             _cond = find_outer_brackets(c, skip_extra=True)
             excess = find_outer_brackets(c, skip_extra=True, return_excess=True)
             length += len(_cond.splitlines())
+
+            if _cond.startswith(VIPER_BRACKETS['VIPER_CODE_IN'] + "\n"):
+                length -= 1  # this is for a case of `if (conditional) {`
             
             if not found_one and await parse_conditional(c.splitlines()[0], global_ns, local_ns, depth):
                 found_one = True
@@ -455,12 +460,14 @@ async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, 
 
             c = excess.strip()
 
-
         if c.startswith(VIPER_KEYWORDS['VIPER_ELSE']):
             v = c.replace(VIPER_KEYWORDS['VIPER_ELSE'], "", 1).strip()
             conditional_code = find_outer_brackets(v, skip_extra=True, include_brackets=False)
             _cond = find_outer_brackets(v, skip_extra=True)
             length += len(_cond.splitlines())
+
+            if _cond.startswith(VIPER_BRACKETS['VIPER_CODE_IN'] + "\n"):
+                length -= 1 # this is for a case of `if (conditional) {`
 
             if not found_one:
                 maybe_resp = await build_code_async(conditional_code, global_ns, local_ns, file=file, depth=depth, func=func)
@@ -507,7 +514,7 @@ async def _build_line(raw_code, line, lineno, global_ns, local_ns, local, file, 
         await call_function(line, global_ns, local_ns, depth)
         return
     
-    raise VP_SyntaxError("something isnt right: {0}".format(line))
+    raise VP_SyntaxError("Invalid Syntax: {0}".format(line))
 
 async def build_code_async(raw_code: str, global_namespace, local_namespace=None, file="<input>", depth=0, func=None):
     """
@@ -535,7 +542,7 @@ async def build_code_async(raw_code: str, global_namespace, local_namespace=None
             r = await _build_line(raw_code, line, index, global_namespace, local_namespace, locals(), file, skipto, depth, func)
             if r is not None:
                 skipto = r
-        except StopIteration as e:
+        except StopAsyncIteration as e:
             return e.args[0]
 
         except VP_Error as error:
