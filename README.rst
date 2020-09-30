@@ -28,7 +28,7 @@ The dev version can be installed via
 
 .. code:: sh
 
-    pip install -U git+https://github.com/IAmTomahawkx/viper-lang
+    python -m pip install -U git+https://github.com/IAmTomahawkx/viper-lang
 
 And can be imported into your project
 
