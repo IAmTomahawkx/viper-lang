@@ -31,7 +31,7 @@ class VP_Error(Exception):
             self.message = None
 
     def __str__(self) -> str:
-        return self.format_stack()
+        return f"Line {self.line}, {self.message}\n\t{self.tree.source.splitlines()[self.line-1]}"
 
     def format_stack(self) -> str:
         pass # TODO

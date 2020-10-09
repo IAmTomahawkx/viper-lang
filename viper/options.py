@@ -26,11 +26,13 @@ class Configuration:
     keyword_for         = "foreach"
 
     keyword_equals      = ("is", "==")
-    keyword_not_equals  = ("is not", "!=")
+    keyword_not_equals  = ("not", "!=")
     keyword_greater     = (">",)
     keyword_smaller     = ("<",)
     keyword_contains    = ("in",)
     keyword_not_contains= ("!in",)
 
-    marker              = "$"
+    reference_marker    = "$"
     comment             = "//"
+
+    boolops = {*keyword_equals, *keyword_not_equals, *keyword_greater, *keyword_smaller, *keyword_contains, *keyword_not_contains}
