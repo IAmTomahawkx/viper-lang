@@ -125,8 +125,7 @@ safe_builtins = {
     "number": to_num,
     "choice": choice,
     "randnum": randnum,
-    "stack": stack,
-    "format": fmt
+    "stack": stack
 }
 
 unsafe_builtins = {
@@ -134,6 +133,7 @@ unsafe_builtins = {
     "write": write,
     "writeline": add_line,
     "readrandline": randline,
+    "format": fmt,
     **safe_builtins
 }
 
