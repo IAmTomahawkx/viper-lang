@@ -1,410 +1,474 @@
-import re
+import copy
 from typing import *
+from pprint import pprint
+
+from sly.lex import Token
+
 from .ast import *
-from .options import *
-from .errors import *
+from . import objects, errors
 
-__all__ = (
-    "compile_ast",
-    "split_lines"
-)
+quickmaths = {
+    "EQ": EqualTo,
+    "NE": NotEqualTo,
+    "GE": GreaterOrEqual,
+    "GT": GreaterThan,
+    "LE": LessOrEqual,
+    "LT": LessThan,
+    "PLUS": Plus,
+    "MINUS": Minus,
+    "MULTIPLY": Times,
+    "DIVIDE": Divide,
+    "MODULUS": Modulus,
+    "CAST": Cast
+}
 
-def compile_ast(src: str, filename: str, configuration: Configuration = Configuration()) -> Tree:
-    """
-    compiles a source string into viper AST.
-    :param src: the source string
-    :type src: str
-    :param filename: the name of the source
-    :type filename: str
-    :param configuration: the :class:`Configuration` to be used in parsing
-    :type configuration: Configuration
-    :return: :class:`Tree`
-    """
-    tree: Tree = Tree(configuration, filename, src)
+quick_idents = {
+    "STRING": objects.String,
+    "INTEGER": objects.Integer,
+    "TRUE": objects.Boolean,
+    "FALSE": objects.Boolean
+}
 
-    lines = split_lines(src, tree)
+def getanyattr(obj, *names):
+    for name in names:
+        o = getattr(obj, name, ...)
+        if o is not ...:
+            return o
 
-    ast = []
-    current_chain = None
+def tokens_as_string(tokens):
+    return " ".join((t.type for t in tokens))
 
-    for line in lines:
-        print(line)
-        if isinstance(line, LineHolder):
-            compiled = _compile_line(line, tree)
+def greedy_consume_tokens(tokens: List[Token], predicate: Callable, per_step=1):
+    ret = []
+    index = 0
+    while True:
+        toks = tokens[index:index+per_step]
+        if len(toks) != per_step:
+            break
+
+        if predicate(*toks):
+            ret.append(toks)
+            index += per_step
         else:
-            compiled = _compile_block(line, tree)
+            break
 
-        if current_chain and isinstance(compiled, ElseIf):
-            current_chain.elif_.append(compiled)
-            continue
+    return ret
 
-        elif current_chain and isinstance(compiled, Else):
-            current_chain.else_ = compiled
-            ast.append(current_chain)
-            current_chain = None
-            continue
+class Parser:
+    def __init__(self):
+        self.quick_match = getattr(self, "__quick__", None) or {}
 
-        elif not current_chain and isinstance(compiled, (ElseIf, Else)):
-            raise VP_SyntaxError(tree, line.lineno,
-                                 "Invalid position for an {0}".format(compiled.__class__.__name__))
+    def parse(self, tokens: List[Token]):
+        if not tokens:
+            raise ValueError("No tokens passed")
 
-        elif current_chain:
-            ast.append(current_chain)
-            current_chain = None
+        # first, group tokens into blocks
+        grouped_tokens = self._group_blocks(tokens)
+        pprint(grouped_tokens, indent=4)
 
-        if isinstance(compiled, If):
-            current_chain = compiled
+        consumed = []
+        output = []
 
-        else:
-            ast.append(compiled)
+        for index, token in enumerate(grouped_tokens):
+            # consume tokens until EOL
+            if token.type != "EOL":
+                consumed.append(token)
 
-    print(ast)
-    tree.parsed = ast
+            else:
+                if not consumed:
+                    continue
 
-    return tree
+                ast = self.match(consumed)
+                consumed.clear()
+                output.append(ast)
 
-def _compile_line(line: LineHolder, tree: Tree, is_expression: bool = False) -> Optional[Union[AST, List[AST]]]:
-    src = line.line
-    maybe_constant = re.match(rf"(\"[^\"=]*\")?([0-9])?({tree.configuration.keyword_true}|{tree.configuration.keyword_false})?", src)
-    if maybe_constant:
-        matches = maybe_constant.groups()
-        if matches[0]:
-            return String(line.lineno, matches[0].strip('"'))
+        if consumed: # match any extras
+            ast = self.match(consumed)
+            consumed.clear()
+            if isinstance(ast, (ElseIf, Else)):
+                if not isinstance(output[-1], If):
+                    raise errors.ViperSyntaxError(consumed[0], 0, f"Unexpected {ast.__class__.__name__}")
 
-        elif matches[1]:
-            return Int(line.lineno, int(matches[1]))
+                if isinstance(ast, ElseIf):
+                    output[-1].extras.append(ast)
 
-        elif matches[2]:
-            return Bool(line.lineno, matches[2] == tree.configuration.keyword_true)
+            else:
+                output.append(ast)
 
-        del matches
+        return output
 
-    del maybe_constant
 
-    def _parse_ifelseif(_expr):
-        _expr = _expr.strip(tree.configuration.bracket_args_in + tree.configuration.bracket_args_out)
-        _expr = _compile_line(LineHolder(line.lineno, _expr), tree, is_expression=True)
+    def _group_blocks(self, tokens: List[Token]) -> List[Union[Block, Token]]:
+        output = []
+        current_block = None
+        depth = 0
+        for token in tokens:
+            if token.type == "BLOCK_OPEN":
+                depth += 1
+                if depth == 1:
+                    current_block = Block(token.lineno, token.index)
 
-        return BoolOp(line.lineno, _expr, None)
+            elif token.type == "BLOCK_CLOSE":
+                depth -= 1
+                if depth < 0:
+                    raise errors.ViperSyntaxError(token, 0, "Invalid closing bracket")
 
-    maybe_elif = re.match(fr"{tree.configuration.keyword_elseif} *(.*)", src) # checks for else if (expression)
-    if maybe_elif:
-        expr = maybe_elif.group(1).strip()
-        if expr:
-            return ElseIf(line.lineno, _parse_ifelseif(expr), [])
+                if depth == 0:
+                    output.append(current_block)
+                    current_block = None
+                    output.append(dummy(token.lineno, "EOL", token.index + len(token.value)))
 
-    maybe_if = re.match(fr"{tree.configuration.keyword_if} (.*)", src) # checks for if (expression)
-    if maybe_if:
-        expr = maybe_if.group(1).strip()
-        if expr:
-            return If(line.lineno, _parse_ifelseif(expr), [], [], None)
+            else:
+                if current_block is not None:
+                    current_block.append(token)
+                else:
+                    output.append(token)
 
-        del expr
+        if depth > 0:
+            raise errors.ViperSyntaxError(token, "Missing closing bracket") # noqa
 
-    del maybe_if
+        return output
 
-    if src == tree.configuration.keyword_else:
-        return Else(line.lineno, [])
-
-    maybe_assignment = re.match("(static)?([^\n=]*)=(.*)", src)  # checks for `(static) (name) = (expression)`
-    if maybe_assignment:
-        static, left, right = maybe_assignment.groups()
-        if left and right:
-            # this is an assignment
-            if is_expression:
-                raise VP_SyntaxError(tree, line.lineno, "Must be an expression")
-
-            left, right = left.strip(), right.strip()
-
-            if not left.startswith(tree.configuration.reference_marker):
-                raise VP_SyntaxError(tree, line.lineno, "Variable name must start with a reference marker ({0})".format(
-                    tree.configuration.reference_marker))
-
-            static = static is not None
-            name = left.replace(tree.configuration.reference_marker, "", 1)
-
-            return Assignment(line.lineno, static, name,
-                              _compile_line(LineHolder(line.lineno, right), tree, is_expression=True))
-
-        del static, left, right
-
-    del maybe_assignment
-
-    maybe_crossassignment = re.match(r"([^\n=]*)([+\-*/])=(.*)", src)  # check for `(name) [+-*/]= (expression)`
-    if maybe_crossassignment:
-        left, operator, right = maybe_crossassignment.groups()
-        left, right = left.strip(), right.strip()
-
-        if left and right and operator:
-            if is_expression:
-                raise VP_SyntaxError(tree, line.lineno, "Must be an expression")
-
-            if not left.startswith(tree.configuration.reference_marker):
-                raise VP_SyntaxError(tree, line.lineno, "Variable name must start with a reference marker ({0})".format(
-                    tree.configuration.reference_marker))
-
-            left = left.replace(tree.configuration.reference_marker, "", 1)
-            types = {
-                "+": PlusEquals,
-                "-": MinusEquals,
-                "*": TimesEquals,
-                "/": DivEquals
-            }
-            operator = types[operator]
-            del types
-            ast = operator(line.lineno, left, _compile_line(LineHolder(line.lineno, right), tree))
-            return ast
-
-        del left, right, operator
-
-    del maybe_crossassignment
-
-    maybe_func = re.match(fr"({tree.configuration.keyword_static})? ?{tree.configuration.keyword_func} ([a-zA-Z0-9]*) *\{tree.configuration.bracket_args_in}([^)]*)\{tree.configuration.bracket_args_out}", src) # noqa
-    if maybe_func:
-        name, args = maybe_func.group(1, 2)
-        args = args.split(",")
-        return Function(line.lineno, "", [Argument(line.lineno, x.replace("?", ""), x.startswith("?")) for x in args])
-
-    # grab anything the regexes dont catch
-
-    items = src.split()
-    if len(items) == 1 and tree.configuration.reference_marker in items[0]:
-        return Reference(line.lineno, src.replace(tree.configuration.reference_marker, "", 1))
-
-    values = [
-        [tree.configuration.keyword_equals, Equals],
-        [tree.configuration.keyword_not_equals, NotEquals],
-        [tree.configuration.keyword_not_equals, NotEquals],
-        [tree.configuration.keyword_not_contains, NotContains],
-        [tree.configuration.keyword_contains, Contains],
-        [tree.configuration.keyword_smaller, Lesser],
-        [tree.configuration.keyword_greater, Greater],
-    ]
-
-    def _compile_lr(left, right):
-        return _compile_line(LineHolder(line.lineno, left), tree), _compile_line(LineHolder(line.lineno, right), tree)
-
-    try:
-        for index, item in enumerate(items):
-            nxt = items[index+1]
-            for types, response in values:
-                if nxt in types:
-                    r = " ".join(items[index+2:])
-                    if r:
-                        left, right = _compile_lr(item, r)
-                    else:
-                        left, right = _compile_line(LineHolder(line.lineno, item), tree), None
-                    return response(line.lineno, left, right)
-    except IndexError:
+    def match(self, tokens: List[Union[Token, Block]]) -> Optional[ASTBase]:
         pass
 
-    raise VP_SyntaxError(tree, line.lineno, "Unexpected token: {0}".format(src.split()[0]))
+    def valid_expr(self, tokens: List[Union[Token, Block]]) -> Optional[Token]:
+        """
+        returns the first token found that is a statement token.
+        If `None` is returned, it is a valid expression
+        """
+        stmt_tokens = (
+            "STATIC",
+            "FUNC",
+            "IF",
+            "ELIF",
+            "ELSE",
+            "RETURN",
+            "EQUALS"
+        )
+        for x in tokens:
+            if x.type in stmt_tokens:
+                return x
 
-def _compile_block(block: BlockHolder, tree: Tree) -> AST:
-    try:
-        caller = _compile_line(LineHolder(block.lineno, block.definer), tree)
-    except IndexError:
-        caller = None
+        return None
 
-    inner = split_lines(block.block, tree, line_offset=block.lineno)
-    _inner = []
-    current_if = None
+    def _from_token(self, token: Token, offset: int) -> Union[ASTBase, objects.Primary]:
+        if token.type in quick_idents:
+            return quick_idents[token.type](token.value)
 
-    for line in inner:
-        if isinstance(line, LineHolder):
-            if not line.line:
-                continue
+        if token.type == "IDENTIFIER":
+            return Identifier(token.value, token.lineno, offset)
 
-            compiled = _compile_line(line, tree)
-            if current_if and isinstance(compiled, ElseIf):
-                current_if.elif_.append(compiled)
-                continue
+    def _consume_attr(self, it: Iterator, offset: int) -> Tuple[Optional[Attribute], Iterator]:
+        new_it = copy.copy(it) # copy this just in case its a dud
+        tok0 = next(new_it)
+        if tok0.type != "IDENTIFIER":
+            return None, it
 
-            elif current_if and isinstance(compiled, Else):
-                current_if.else_ = compiled
-                _inner.append(current_if)
-                current_if = None
-                continue
+        tok1 = next(new_it)
+        if tok1.type != "ATTR":
+            next(it)
+            return None, it
 
-            elif not current_if and isinstance(compiled, (ElseIf, Else)):
-                raise VP_SyntaxError(tree, line.lineno, "Invalid position for an {0}".format(compiled.__class__.__name__))
+        tok2 = next(new_it)
+        if tok2.type != "IDENTIFIER":
+            return None, it
 
-            elif current_if:
-                _inner.append(current_if)
-                current_if = None
+        extras = []
+        for tok in new_it:
+            if tok.type not in ("IDENTIFIER", "ATTR"):
+                break
 
-            if isinstance(compiled, If):
-                current_if = compiled
+            if tok.type == "IDENTIFIER":
+                extras.append(Identifier(tok.value, tok.lineno, offset + tok.index - tok0.index))
 
-            else:
-                _inner.append(compiled)
+        return Attribute(Identifier(tok0.value, tok0.lineno, offset),
+                               Identifier(tok2.value, tok2.lineno, offset + tok2.index - tok0.index),
+                               tok0.lineno, offset, appended_children=extras), new_it
 
-        else:
-            _inner.append(_compile_block(line, tree))
+    def parse_expr(self, tokens: List[Union[Token, Block]], offset=0, force_valid=False) -> Union[ASTBase, objects.Primary]:
+        if not force_valid:
+            maybe_stmt = self.valid_expr(tokens)
+            assert maybe_stmt is None, errors.ViperSyntaxError(maybe_stmt, offset + maybe_stmt.index - tokens[0].index,
+                                                               f"Expected a statement, got {maybe_stmt.value}")
 
-    if isinstance(caller, (If, ElseIf, Else, Function)):
-        caller.code = _inner
-        return caller
+        if len(tokens) == 1:
+            return self._from_token(tokens[0], offset) # string, bool, etc
 
-    raise ValueError(caller)
+        if len(tokens) == 2:
+            return Identifier(tokens[1].value, tokens[1].lineno, (tokens[1].index - tokens[0].index) + offset)
 
-def split_lines(src: str, tree: Tree, line_offset: int = 0) -> List[Union[LineHolder, BlockHolder]]:
-    _src: List[str] = src.splitlines()
-    __src: List[str] = []
-    for line in _src:
-        __src.append(line.strip()) # remove indents and extra whitespace
-
-    src = "\n".join(__src)
-    del _src, __src
-
-    resp: List[Union[LineHolder, BlockHolder]] = []
-
-    block = ""
-    blocked: Optional[Union[LineHolder, BlockHolder]] = None
-    line_no = 1 + line_offset
-    in_count = 0
-
-    for index, char in enumerate(src):
-        if char == "\n":
-            if src[index+1] == tree.configuration.bracket_code_in:
-                if not in_count:
-                    # the next line is a code_in block, this will need to be a blockHolder
-                    blocked = BlockHolder(line_no, block, "")
-                    resp.append(blocked)
-                    block = ""
-                else:
-                    # were already in a block
-                    blocked.block += char
-
-            elif src[index-1] == tree.configuration.bracket_code_in:
-                if in_count < 2:
-                    blocked = BlockHolder(line_no, block[0:len(block)-1].strip(), tree.configuration.bracket_code_in)
-                    resp.append(blocked)
-                    block = ""
-                else:
-                    blocked.block += char
+        it = iter(tokens)
+        if tokens[0].type == "IDENTIFIER":
+            attr, it = self._consume_attr(it, offset)
+            if attr is not None:
+                parser = attr
+                next_token = next(it)
 
             else:
-                if block and not blocked:
-                    blocked = LineHolder(line_no, block)
-                    resp.append(blocked)
-                    blocked = None
-                    block = ""
-
-                elif blocked:
-                    blocked.block += char
-
-            line_no += 1
-            continue
-
-        if not blocked:
-            block += char
-
-        elif isinstance(blocked, LineHolder):
-            blocked.line += char
+                parser = tokens[0]
+                next_token = next(it)
 
         else:
-            blocked.block += char
+            n = next(it)
+            parser = self._from_token(n, offset + n.index - tokens[0].index)
+            next_token = next(it)
 
-        if char == tree.configuration.bracket_code_in:
-            if not blocked:
-                blocked = BlockHolder(line_no, block, char)
+        if not next_token:
+            return parser
 
-            in_count += 1
+        modifier = quickmaths.get(next_token.type, None)
+        if not modifier:
+            raise ValueError("wtf", parser, next_token, modifier)
 
-        elif char == tree.configuration.bracket_code_out:
-            in_count -= 1
-            if not in_count:
-                blocked = None
+        r = [x for x in it]
+        parsee = self.parse_expr(r, force_valid=True)
 
-    return resp
+        return BiOperatorExpr(parser, modifier, parsee, parser.lineno, offset)
 
-def find_arguments(string: str) -> List[str]:
-    in_string = False
-    args = [""]
+    def _parse_function_args(self, tokens: List[Token], offset: int):
+        output = []
+        current = []
+        start = tokens[0].index
+        parsing_default = False
 
-    for index, char in enumerate(string):
-        if char == '"':
-            args[-1] += char
+        for index, token in enumerate(tokens):
+            if token.type == "COMMA":
+                if not current:
+                    raise errors.ViperSyntaxError(token, offset + (token.index - start), "Unexpected ','")
 
-            if in_string and string[index-1] == "\\":
-                args[-1] += char
+                if len(current) == 3:
+                    current.append(None) # the default
+
+                if len(current) != 4:
+                    raise errors.ViperSyntaxError(token, offset + token.index - start - 1, "Invalid argument")
+
+                output.append(Argument(current[2], current[1], len(output), token.lineno, current[0], current[3]))
+                current.clear()
+                parsing_default = False
                 continue
 
-            in_string = not in_string
-            continue
+            if not current:
+                current.append(offset + (token.index - start))
+                current.append(token.type == "QMARK")
 
-        if char == "," and not in_string:
-            args.append("")
-            continue
+            elif token.type == "QMARK":
+                raise errors.ViperSyntaxError(token, offset + (token.index - start), "Unexpected '?'")
 
-        args[-1] += char
+            if token.type == "IDENTIFIER" and len(current) == 2:
+                current.append(Identifier(token.value, token.lineno, offset + (token.index - start)))
+                continue
 
-    return args
+            if token.type == "EQUALS":
+                parsing_default = True
+                continue
 
-def find_outer_brackets(
-        tree: Tree,
-        lineno: int,
-        raw_code: str,
-        bracket_in: str = None,
-        bracket_out: str = None,
-        include_brackets: bool = True,
-        skip_extra: bool = False,
-        return_excess: bool = False
-) -> str:
-    """
-    returns code up to the outermost bracket
-    """
-    bracket_in = bracket_in or tree.configuration.bracket_code_in
-    bracket_out = bracket_out or tree.configuration.bracket_code_out
+            if token.type == "IDENTIFIER" and not parsing_default:
+                raise errors.ViperSyntaxError(token, offset + token.index - start, f"Unexpected '{token.value}'")
 
-    raw_code = raw_code.strip()
-    iterator = enumerate(raw_code)
-    output = ""
-    level = 0
+            elif token.type == "IDENTIFIER":
+                current.append(self._from_token(token, offset + token.index - start))
 
-    if not raw_code.startswith(bracket_in):
-        if not skip_extra:
-            raise VP_SyntaxError(tree, lineno, "Start character, '{0}', not found".format(bracket_in))
+            elif token.type == "PAREN_CLOSE":
+                if len(current) == 3:
+                    current.append(None)  # the default
 
+                if len(current) != 4:
+                    raise errors.ViperSyntaxError(current[2], current[0], "Invalid argument")
+
+                output.append(Argument(current[2], current[1], len(output), token.lineno,
+                                       current[0]))
+                current.clear()
+                break
+
+            if token.type != "QMARK":
+                raise ValueError("something wrong", token)
+
+        return output
+
+    def parse_function_call_args(self, tokens: List[Token], offset: int) -> List[CallArgument]:
+        output = []
+        current = []
+        start = tokens[0].index
+
+        for index, token in enumerate(tokens):
+            if token.type == "COMMA":
+                if not current:
+                    raise errors.ViperSyntaxError(token, offset + (token.index - start), "Unexpected ','")
+
+                output.append(
+                    CallArgument(len(output), self.parse_expr(current, current[0].index - start), token.lineno,
+                                 current[0].index - start))
+                current.clear()
+                continue
+
+            elif token.type in ("IDENTIFIER", "ATTR", *quickmaths):
+                current.append(token)
+                continue
+
+            elif token.type == "PAREN_CLOSE":
+                if current:
+                    output.append(
+                        CallArgument(len(output), self.parse_expr(current, current[0].index - start), token.lineno,
+                                     current[0].index - start))
+
+                    current.clear()
+                break
+
+            raise ValueError("something wrong", token)
+
+        return output
+
+    @classmethod
+    def quickmatch(cls, pattern: str):
+        if not hasattr(cls, "__quick__"):
+            cls.__quick__ = {}
+
+        if pattern in cls.__quick__:
+            raise ValueError("Quick path already exists")
+
+        def _inner(func):
+            cls.__quick__[pattern] = func
+            return func
+
+        return _inner
+
+class ViperParser(Parser):
+    def match(self, tokens):
+        # first, check the quickmatches
+        stringed = tokens_as_string(tokens)
+        print(stringed)
+        for q, func in self.quick_match.items():
+            if stringed.startswith(q):
+                # we've got a hit
+                return func(self, tokens)
+
+        if "PAREN_OPEN" in stringed and (stringed.startswith("IDENTIFIER")):
+            return self.expr_func_call(tokens)
+
+        raise errors.ViperSyntaxError(tokens[0], 0, "Invalid Syntax")
+
+    @Parser.quickmatch("IDENTIFIER")
+    @Parser.quickmatch("STATIC IDENTIFIER")
+    def stmt_assign(self, tokens):
+        line_start = tokens[0].index
+        static = tokens[0].type == "STATIC"
+        if static:
+            name = Identifier(tokens[1].value, tokens[1].lineno, tokens[1].index - line_start)
+            expr = self.parse_expr(list(tokens[3:]), tokens[3].index - line_start)
         else:
-            _, char = next(iterator)
-            try:
-                while char != bracket_in:
-                    if char == "\n":
-                        lineno += 1
+            name = Identifier(tokens[0].value, tokens[0].lineno, tokens[0].index - line_start)
+            expr = self.parse_expr(list(tokens[2:]), tokens[2].index - line_start)
 
-                    _, char = next(iterator)
+        return Assignment(name, expr, tokens[0].lineno, line_start, static)
 
-                if include_brackets:
-                    output += bracket_in
-                level += 1
-            except StopIteration:
-                raise VP_SyntaxError(tree, lineno, "Start character, '{0}', not found".format(bracket_in))
+    @Parser.quickmatch("FUNC")
+    @Parser.quickmatch("STATIC FUNC")
+    def stmt_func(self, tokens):
+        line_start = tokens[0].index
+        static = tokens[0].type == "STATIC"
 
-    for index, char in iterator:
-        if char == "\n":
-            lineno += 1
+        if static:
+            name = Identifier(tokens[2].value, tokens[2].lineno, tokens[2].index - line_start)
+            args = self._parse_function_args(tokens[4:], tokens[4].index - line_start)
+        else:
+            name = Identifier(tokens[1].value, tokens[1].lineno, tokens[1].index - line_start)
+            args = self._parse_function_args(tokens[3:], tokens[3].index - line_start)
 
-        if include_brackets:
-            output += char
+        return Function(name, self.parse(tokens[-1]), args, static, tokens[0].lineno, 0)
 
-        if char == bracket_in:
-            level += 1
-            if level != 1:
-                output += char
+    @Parser.quickmatch("IDENTIFIER PAREN_OPEN")
+    def q_expr_func_call(self, tokens):
+        name = tokens[0]
+        name = Identifier(name.value, name.lineno, 0)
+        return self.common_expr_func_call(name, tokens[2:], tokens[2].index - tokens[0].index)
 
-            continue
+    def expr_func_call(self, tokens):
+        value = []
+        start = tokens[0].index
+        it = iter(tokens)
+        for tok in it:
+            if tok.type not in ("IDENTIFIER", "ATTR"):
+                break
 
-        if char == bracket_out:
-            level -= 1
-            if level == 0:
-                if return_excess:
-                    return raw_code[index + 1:]
+            if tok.type == "IDENTIFIER":
+                value.append(Identifier(tok.value, tok.lineno, tok.index - start))
 
-                return output
+        name = Attribute(value[0], value[1], tokens[0].lineno, 0, appended_children=value[2:])
+        vals = [x for x in it]
+        return self.common_expr_func_call(name, vals, vals[0].index - start)
 
-        if not include_brackets:
-            output += char
 
-    raise VP_SyntaxError(tree, lineno, "End character, '{0}', not found".format(bracket_out))
+    def common_expr_func_call(self, name: Union[Identifier, Attribute], tokens, offset: int):
+        start = tokens[0].index
+        args = []
+        current = []
+
+        for tok in tokens:
+            if tok.type == "PAREN_CLOSE":
+                args.append(CallArgument(len(args), self.parse_expr(current, offset + (current[0].index - start)),
+                                         current[0].lineno, offset + (current[0].index - start)))
+                current.clear()
+                break
+
+            if tok.type == "COMMA":
+                if not current:
+                    raise errors.ViperSyntaxError(tok, offset + (tok.index - start), "Unexpected ','")
+
+                args.append(CallArgument(len(args), self.parse_expr(current, offset + (current[0].index - start)),
+                                         current[0].lineno, offset + (current[0].index - start)))
+                current.clear()
+                continue
+
+            current.append(tok)
+
+        return FunctionCall(name, args, tokens[0].lineno, offset)
+
+    def stmt_ifelseif_parse(self, tokens):
+        it = iter(tokens)
+        next(it)  # drop the identity
+        pin = next(it)
+        if pin.type != "PAREN_OPEN":
+            raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index, f"Expected '(', got '{pin.value}'")
+
+        values = self.parse_function_call_args([x for x in it], pin.index - tokens[0].index)
+        # turns out function argument parsing is almost identical to this, with the exception that this needs exactly
+        # one argument, and it needs some sort of equality check. its pretty easy to extract the value from the returned
+        # CallArgument, so this provides a convenient method to parse the value
+
+        if not values:
+            raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index, "Expected a condition, got nothing")
+
+        if len(values) > 1:
+            raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index, "Too many expressions for an if statement.")
+
+        values = values[0]
+        values = values.value
+        if not isinstance(values, BiOperatorExpr):
+            raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index,
+                                          f"Expected a comparison, got <{values.__class__.__name__}>")
+
+        return values
+
+    @Parser.quickmatch("IF")
+    def stmt_if_block(self, tokens):
+        value = self.stmt_ifelseif_parse(tokens)
+        if not isinstance(tokens[-1], list):
+            raise errors.ViperSyntaxError(tokens[-1], tokens[-1].index - tokens[0].index, f"Expected a code block, got '{tokens[-1].type}'")
+
+        return If(value, self.parse(tokens[-1]), tokens[0].lineno, 0)
+
+    @Parser.quickmatch("ELIF")
+    def stmt_elseif_block(self, tokens):
+        value = self.stmt_ifelseif_parse(tokens)
+        if not isinstance(tokens[-1], list):
+            raise errors.ViperSyntaxError(tokens[-1], tokens[-1].index - tokens[0].index, f"Expected a code block, got '{tokens[-1].type}'")
+
+        return ElseIf(value, self.parse(tokens[-1]), tokens[0].lineno, 0)
+
+    @Parser.quickmatch("ELSE")
+    def stmt_else_block(self, tokens):
+        if not isinstance(tokens[-1], list):
+            raise errors.ViperSyntaxError(tokens[-1], tokens[-1].index - tokens[0].index, f"Expected a code block, got '{tokens[-1].type}'")
+
+        return Else(self.parse(tokens[-1]), tokens[-1].lineno, tokens[-1].index - tokens[0].index)
