@@ -63,13 +63,13 @@ class Identifier(ASTBase):
         return self
 
     async def execute(self, runner: "Runtime"):
-        return runner.get_current_scope().get_variable(self)
+        return await runner.get_variable(self)
 
 
 class Assignment(ASTBase):
     __slots__ = "name", "value", "static"
 
-    def __init__(self, name: Identifier, value: Union[ASTBase, objects.Primary], lineno: int, offset: int,
+    def __init__(self, name: Identifier, value: ASTBase, lineno: int, offset: int,
                  static=False):
         self.name = name
         self.value = value
@@ -77,20 +77,27 @@ class Assignment(ASTBase):
         super().__init__(lineno, offset)
 
     async def execute(self, runner: "Runtime"):
-        if isinstance(self.value, ASTBase):
-            runner.set_var(self.name, self.value.execute(runner))
-        else:
-            runner.set_var(self.name, self.value)
-
+        await runner.set_variable(self.name, await self.value.execute(runner), self.static)
 
 class Cast(ASTBase):
     __slots__ = "name", "caster"
 
-    def __init__(self, name: str, caster: objects.Primary, lineno: int, offset: int):
+    def __init__(self, name: Identifier, caster: Identifier, lineno: int, offset: int):
         self.name = name
         self.caster = caster
         super().__init__(lineno, offset)
 
+    async def execute(self, runner: "Runtime"):
+        caster = await runner.get_variable(self.caster)
+        if not issubclass(caster, objects.Primary) and not isinstance(caster, objects.Primary):
+            raise errors.ViperExecutionError(runner, self.name.lineno, f"Expected to cast to a basic type (string, "
+                                                                       f"integer, bool), got '{caster}'")
+
+        name = await runner.get_variable(self.name)
+        if not name.__getattribute__("_cast"):
+            raise errors.ViperExecutionError(runner, self.name.lineno, f"cannot use cast on {name}")
+
+        return name.__getattribute__("_cast")(caster, self.lineno)
 
 class Attribute(ASTBase):
     __slots__ = "parent", "child", "appended_children"
@@ -142,10 +149,10 @@ class Argument(ASTBase):
         elif maybe_arg is None:
             return None
 
-        if isinstance(maybe_arg.value, objects.Primary):
-            return maybe_arg.value
+        if isinstance(maybe_arg.value, PrimaryWrapper):
+            return await maybe_arg.execute(runner)
 
-        return runner.get_variable(maybe_arg.value)
+        return await runner.get_variable(maybe_arg.value)
 
 
 class CallArgument(ASTBase):
@@ -177,7 +184,7 @@ class Function(ASTBase):
     def _find(self, pos, args):
         for arg in args:
             if arg.position == pos:
-                return pos
+                return arg
 
     async def execute(self, runner: "Runtime", args: List[CallArgument]) -> "VPObject":
         with runner.new_scope():
@@ -187,7 +194,7 @@ class Function(ASTBase):
                 if value is None:
                     raise errors.ViperExecutionError(runner, self.lineno, f"No value passed for argument '{arg.name}'")
 
-                runner.set_variable(arg.name, value)
+                await runner.set_variable(arg.name, value, False)
 
             return await runner._run_function_body(self.code)
 
@@ -201,8 +208,19 @@ class FunctionCall(ASTBase):
         super().__init__(lineno, offset)
 
     async def execute(self, runner: "Runtime"):
-        func = runner.get_variable(self.name)
-        return await func.execute(runner, self.args)
+        func = await runner.get_variable(self.name)
+        if isinstance(func, objects.Function):
+            return await func.__getattribute__("_call")(runner, self.args)
+
+        elif isinstance(func, objects.PyNativeObjectWrapper):
+            caller = object.__getattribute__(func, "_call")
+            args = []
+            for arg in self.args:
+                args.append(await arg.execute(runner))
+            return await caller(runner, self.name.lineno, *args)
+
+        else:
+            raise errors.ViperExecutionError(runner, self.name.lineno, f"{func} is not callable")
 
 
 class If(ASTBase):
@@ -218,14 +236,14 @@ class If(ASTBase):
     async def execute(self, runner: "Runtime"):
         passing = await self.condition.execute(runner)
         if passing:
-            return await runner._run_function_body(self.block)
+            return await runner._run_function_body(self.code)
 
         for elseif in self.others:
             if await elseif.condition.execute(runner):
-                return await runner._execute_function_body(self.code)
+                return await runner._run_function_body(self.code)
 
         if self.finish:
-            return await runner._execute_function_body(self.finish.code)
+            return await runner._run_function_body(self.finish.code)
 
 
 class ElseIf(ASTBase):
@@ -243,12 +261,21 @@ class ElseIf(ASTBase):
 
 
 class Else(ASTBase):
-    __slots__ = "code"
+    __slots__ = "code",
 
     def __init__(self, code: List[Any], lineno: int, offset: int):
         self.code = code
         super().__init__(lineno, offset)
 
+class PrimaryWrapper(ASTBase):
+    __slots__ = "wraps", "obj"
+    def __init__(self, wraps: Type, obj: Any, lineno: int, offset: int):
+        self.wraps = wraps
+        self.obj = obj
+        super().__init__(lineno, offset)
+
+    async def execute(self, runner: "Runtime"):
+        return self.wraps(self.obj, self.lineno, runner)
 
 class Operator:
     __slots__ = ()
@@ -355,8 +382,8 @@ class BiOperatorExpr(ASTBase):
         return l._cast(r)
 
     async def execute(self, runner: "Runtime"):
-        left = runner.get_variable(self.left) if isinstance(self.left, Identifier) else await self.left.execute(runner)
-        right = runner.get_variable(self.right) if isinstance(self.right, Identifier) else await self.right.execute(
+        left = await runner.get_variable(self.left) if isinstance(self.left, Identifier) else await self.left.execute(runner)
+        right = await runner.get_variable(self.right) if isinstance(self.right, Identifier) else await self.right.execute(
             runner)
 
-        return getattr(self, '_' + self.op.__class__.__name__)(left, right)
+        return getattr(self, '_' + self.op.__name__)(left, right)

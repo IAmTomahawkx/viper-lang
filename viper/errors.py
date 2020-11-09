@@ -77,3 +77,9 @@ class ViperRaisedError(ViperError):
 
     def __str__(self):
         return self.message
+
+class ViperCastError(ViperError):
+    pass
+
+class ViperTypeError(ViperError):
+    pass

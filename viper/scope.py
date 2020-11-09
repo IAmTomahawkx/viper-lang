@@ -1,9 +1,36 @@
-from .ast import Ide
+from typing import *
+from . import objects
+from .ast import Identifier, ASTBase
+from .errors import ViperNameError, ViperStaticError
+from .lib._builtins import EXPORTS as _builtin_exports
+
+if TYPE_CHECKING:
+    from .runner import Runtime
+
+__all__ = "Scope", "InitialScope"
 
 class Scope:
-    def __init__(self, runtime):
+    def __init__(self, runtime: "Runtime"):
         self._vars = {}
         self._runtime = runtime
 
-    def set_var(self, item, value):
-        pass
+    def set_variable(self, runner: "Runtime", item: Identifier, value: objects.VPObject, static: bool, *, force=False):
+        if item in self._vars:
+            if self._vars[item.name][0] and not force:
+                raise ViperStaticError(runner, item.lineno, f"Variable '{item.name}' is static, and cannot be changed.")
+
+        self._vars[item.name] = (value, static)
+
+    def get_variable(self, runner: "Runtime", item: Identifier, *, raise_empty=True):
+        if item.name in self._vars:
+            return self._vars[item.name][0]
+
+        if raise_empty:
+            raise ViperNameError(runner, item.lineno, f"Variable '{item.name}' not found")
+        return None
+
+class InitialScope(Scope):
+    def __init__(self, runtime: "Runtime"):
+        super().__init__(runtime)
+        for name, value in _builtin_exports.items():
+            self._vars[name] = value, True
