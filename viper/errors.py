@@ -83,3 +83,6 @@ class ViperCastError(ViperError):
 
 class ViperTypeError(ViperError):
     pass
+
+class ViperModuleError(ViperError):
+    pass

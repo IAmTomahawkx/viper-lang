@@ -7,21 +7,35 @@ from .scope import Scope, InitialScope
 from .lexer import ViperLexer
 from .parser import ViperParser
 from .ast import *
+from . import lib
 
 _quick_exec = (
     Assignment,
     FunctionCall,
-    If
+    If,
+    Import
 )
 
 class Runtime:
-    def __init__(self, file: str = "<string>"):
+    def __init__(self, file: str = "<string>", injected: dict = None, *, allow_unsafe_imports: bool = False):
         self.scopes: List[Scope] = []
+        injected = injected or {}
+        self._injected = {}
+        for name, inj in injected.items():
+            if not isinstance(inj, objects.PyNativeObjectWrapper):
+                inj = objects.PyObjectWrapper(self, inj)
+
+            self._injected[Identifier(name, -1, -1)] = inj
         self.raw_code = None
         self.file = file
         self.modules = {}
-        self.ast = None
         self.null = objects.NULL(self)
+        self.allow_unsafe_imports = allow_unsafe_imports
+        self.session = None
+
+    @property
+    def scope(self):
+        return self.scopes[-1]
 
     def tokenize(self, source: str, lex: Lexer=ViperLexer()) -> List[Token]:
         """
@@ -40,22 +54,28 @@ class Runtime:
         :param parser: an optional parser to use instead of ViperParser. Only recommended if you know what youre doing.
         :return: List[ASTBase]
         """
-        self.ast = parser.parse(tokens)
-        return self.ast
+        return parser.parse(tokens)
 
     async def execute(self, ast: List[ASTBase] = None):
-        ast = ast or self.ast
         if self.scopes:
             raise RuntimeError("Runtime is already running!")
 
         with self.new_scope(cls=InitialScope):
             await self.set_variable(Identifier("null", -1, -1), self.null, True)
-            await self._common_execute(ast, False)
+            await self._common_execute(ast)
+
+    async def cleanup(self):
+        if self.session:
+            await self.session.close()
 
     async def run(self, source, *, initial_variables: dict = None):
+        if initial_variables:
+            self._injected.update(initial_variables)
+
         tokens = [x for x in self.tokenize(source)]
         ast = self.parse(tokens)
         await self.execute(ast)
+        await self.cleanup()
 
     @contextmanager
     def new_scope(self, cls=Scope):
@@ -80,25 +100,49 @@ class Runtime:
 
         scope.set_variable(self, ident, value, static)
 
-    async def get_variable(self, ident: Identifier) -> Optional[objects.VPObject]:
+    async def get_variable(self, ident: Union[Identifier, Attribute]) -> Optional[objects.VPObject]:
         scopes = reversed(self.scopes)
+        base_name = ident if isinstance(ident, Identifier) else ident.parent
+
         for scope in scopes:
-            val = scope.get_variable(self, ident, raise_empty=False)
+            val = scope.get_variable(self, base_name, raise_empty=False)
             if val is not None:
+                if isinstance(ident, Attribute):
+                    children = [ident.child, *ident.appended_children]
+                    for child in children:
+                        val = getattr(val, child.name)
+                        if not val:
+                            raise errors.ViperAttributeError(self, ident.lineno, f"Variable '{val}' has no attribute '{child.name}'")
+
+
                 return val
 
         raise errors.ViperNameError(self, ident.lineno, f"Variable '{ident.name}' not found")
 
     async def _run_function_body(self, code: List[ASTBase]) -> Any:
-        return await self._common_execute(code, True)
+        return await self._common_execute(code)
 
-    async def _common_execute(self, code: List[ASTBase], in_function=False) -> Any:
+    async def _common_execute(self, code: List[ASTBase]) -> Any:
         for block in code:
             if type(block) in _quick_exec:
                 await block.execute(self)
 
             elif isinstance(block, Function):
-                await self.set_variable(block.name, objects.Function(block, self), block.static)
+                try:
+                    exists = await self.get_variable(block.name)
+                except errors.ViperNameError:
+                    exists = None
+
+                if exists and isinstance(exists, objects.Function):
+                    exists._ast.matches.append(objects.Function(block, self))
+                else:
+                    await self.set_variable(block.name, objects.Function(block, self), block.static)
+
+                del exists
 
             else:
                 raise ValueError(block)
+
+    async def import_module(self, name: Identifier, line: int):
+        module = lib.import_and_parse(self, line, name.name)
+        await self.set_variable(name, module, True)

@@ -46,7 +46,9 @@ class ViperLexer(sly.Lexer):
         RETURN,
         NULL,
 
-        IDENTIFIER
+        IDENTIFIER,
+
+        IMPORT
     )
     ignore_comment = r'\/\/.*'
 
@@ -94,6 +96,7 @@ class ViperLexer(sly.Lexer):
     IDENTIFIER['if'] = IF
     IDENTIFIER['elif'] = "ELIF"
     IDENTIFIER['else'] = ELSE
+    IDENTIFIER['import'] = IMPORT
 
     ignore = ' \t'
 

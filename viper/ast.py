@@ -114,7 +114,7 @@ class Attribute(ASTBase):
             raise ValueError("no parent given")
 
         parent = parent or self.parent
-        parent = runner.get_variable(parent)
+        parent = await runner.get_variable(parent)
         result = getattr(parent, self.child.name, None)
 
         if result is None:
@@ -154,13 +154,18 @@ class Argument(ASTBase):
 
         return await runner.get_variable(maybe_arg.value)
 
+    def __eq__(self, other):
+        return isinstance(other, Argument) and other.name == self.name and other.optional == self.optional
+
 
 class CallArgument(ASTBase):
-    __slots__ = "position", "value"
+    __slots__ = "position", "value", "index", "type"
 
     def __init__(self, position: int, value: Union[ASTBase, objects.Primary], lineno: int, offset: int):
         self.position = position
         self.value = value
+        self.index = -1
+        self.type = "IDENTIFIER"
         super().__init__(lineno, offset)
 
     async def execute(self, runner: "Runtime"):
@@ -171,7 +176,7 @@ class CallArgument(ASTBase):
 
 
 class Function(ASTBase):
-    __slots__ = "code", "arguments", "static", "name"
+    __slots__ = "code", "arguments", "static", "name", "matches"
 
     def __init__(self, name: Identifier, code: List[ASTBase], arguments: List[Argument], static: bool, lineno: int,
                  offset: int):
@@ -179,6 +184,7 @@ class Function(ASTBase):
         self.arguments = arguments
         self.static = static
         self.name = name
+        self.matches: List[objects.Function] = []
         super().__init__(lineno, offset)
 
     def _find(self, pos, args):
@@ -187,6 +193,16 @@ class Function(ASTBase):
                 return arg
 
     async def execute(self, runner: "Runtime", args: List[CallArgument]) -> "VPObject":
+        for match in self.matches:
+            aln = len(args)
+            min_args = sum((1 for a in match._ast.arguments if not a.optional))
+            max_args = len(match._ast.arguments)
+            if min_args <= aln <= max_args:
+                return await match._ast._actual_execute(runner, args)
+
+        raise errors.ViperExecutionError(runner, self.lineno, f"function {self.name.name} could not take such arguments: {', '.join((str(x) for x in args))}")
+
+    async def _actual_execute(self, runner: "Runtime", args: List[CallArgument]) -> "VPObject":
         with runner.new_scope():
             for arg in self.arguments:
                 _arg = self._find(arg.position, args)
@@ -276,6 +292,15 @@ class PrimaryWrapper(ASTBase):
 
     async def execute(self, runner: "Runtime"):
         return self.wraps(self.obj, self.lineno, runner)
+
+class Import(ASTBase):
+    __slots__ = "module",
+    def __init__(self, module: Identifier, lineno: int, offset: int):
+        self.module = module
+        super().__init__(lineno, offset)
+
+    async def execute(self, runner: "Runtime"):
+        return await runner.import_module(self.module, self.module.lineno)
 
 class Operator:
     __slots__ = ()

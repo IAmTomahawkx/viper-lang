@@ -78,6 +78,12 @@ class Parser:
                     continue
 
                 ast = self.match(consumed)
+                if isinstance(ast, tuple):
+                    if ast[1]:
+                        raise ValueError(ast)
+                    else:
+                        ast = ast[0]
+
                 if isinstance(ast, (ElseIf, Else)):
                     if not isinstance(output[-1], If):
                         raise errors.ViperSyntaxError(consumed[0], 0, f"Unexpected {ast.__class__.__name__}")
@@ -98,6 +104,12 @@ class Parser:
 
         if consumed: # match any extras
             ast = self.match(consumed)
+            if isinstance(ast, tuple):
+                if ast[1]:
+                    raise ValueError(ast)
+                else:
+                    ast = ast[0]
+
             if isinstance(ast, (ElseIf, Else)):
                 if not isinstance(output[-1], If):
                     raise errors.ViperSyntaxError(consumed[0], 0, f"Unexpected {ast.__class__.__name__}")
@@ -191,24 +203,26 @@ class Parser:
         if token.type == "IDENTIFIER":
             return Identifier(token.value, token.lineno, offset)
 
-    def _consume_attr(self, it: Iterator, offset: int) -> Tuple[Optional[Attribute], Iterator]:
+    def _consume_attr(self, it: Iterator, offset: int) -> Tuple[Optional[Attribute], Optional[Token], Iterator]:
         new_it = copy.copy(it) # copy this just in case its a dud
         tok0 = next(new_it)
         if tok0.type != "IDENTIFIER":
-            return None, it
+            return None, None, it
 
         tok1 = next(new_it)
         if tok1.type != "ATTR":
             next(it)
-            return None, it
+            return None, None, it
 
         tok2 = next(new_it)
         if tok2.type != "IDENTIFIER":
-            return None, it
+            return None, None, it
 
         extras = []
+        skipped = None
         for tok in new_it:
             if tok.type not in ("IDENTIFIER", "ATTR"):
+                skipped = tok
                 break
 
             if tok.type == "IDENTIFIER":
@@ -216,7 +230,7 @@ class Parser:
 
         return Attribute(Identifier(tok0.value, tok0.lineno, offset),
                                Identifier(tok2.value, tok2.lineno, offset + tok2.index - tok0.index),
-                               tok0.lineno, offset, appended_children=extras), new_it
+                               tok0.lineno, offset, appended_children=extras), skipped, new_it
 
     def _parse_cast(self, tokens: List[Token], offset: int) -> Tuple[Cast, List[Token]]:
         if len(tokens) < 3:
@@ -255,15 +269,21 @@ class Parser:
                 next_token = next(it, None)
 
             else:
-                attr, it = self._consume_attr(it, offset)
+                attr, skipped, it = self._consume_attr(it, offset)
                 if attr is not None:
                     parser = attr
-                    next_token = next(it)
+                    try:
+                        next_token = next(it) if not skipped else skipped
+                    except StopIteration:
+                        next_token = None
 
                 else:
                     parser = tokens[0]
                     parser = Identifier(parser.value, parser.lineno, offset)
-                    next_token = next(it)
+                    try:
+                        next_token = next(it)
+                    except StopIteration:
+                        next_token = None
 
         else:
             n = next(it)
@@ -274,10 +294,19 @@ class Parser:
             return parser
 
         modifier = quickmaths.get(next_token.type, None)
+        r = None
         if not modifier:
-            raise ValueError("wtf", parser, next_token, modifier)
+            if next_token.type == "PAREN_OPEN":
+                # suprise, this is actually a function call
+                parser, r = self.match(tokens)
+                if not r:
+                    return parser
+            else:
+                raise ValueError("wtf", parser, next_token, modifier, tokens)
 
-        r = [x for x in it]
+        if not r:
+            r = [x for x in it]
+
         parsee = self.parse_expr(r, force_valid=True)
 
         return BiOperatorExpr(parser, modifier, parsee, tokens[0].lineno, offset)
@@ -326,7 +355,11 @@ class Parser:
                 current.append(self._from_token(token, offset + token.index - start))
 
             elif token.type == "PAREN_CLOSE":
-                if len(current) == 3:
+                if len(current) == 2:
+                    current.clear()
+                    break
+
+                elif len(current) == 3:
                     current.append(None)  # the default
 
                 if len(current) != 4:
@@ -342,38 +375,96 @@ class Parser:
 
         return output
 
-    def parse_function_call_args(self, tokens: List[Token], offset: int) -> List[CallArgument]:
+    def parse_function_call_args(self, tokens: List[Token], offset: int) -> Tuple[List[CallArgument], Optional[List[Token]]]:
         output = []
         current = []
         start = tokens[0].index
+        depth = 0
+        index = 0
+        if tokens[0].type != "PAREN_OPEN":
+            depth = 1
+
+        math_left = None
+        math_opr = None
 
         for index, token in enumerate(tokens):
             if token.type == "COMMA":
                 if not current:
                     raise errors.ViperSyntaxError(token, offset + (token.index - start), "Unexpected ','")
 
-                output.append(
-                    CallArgument(len(output), self.parse_expr(current, current[0].index - start), token.lineno,
-                                 current[0].index - start))
-                current.clear()
-                continue
-
-            elif token.type in ("IDENTIFIER", "ATTR", *quickmaths):
-                current.append(token)
-                continue
-
-            elif token.type == "PAREN_CLOSE":
-                if current:
+                if math_left:
+                    left = self.parse_expr(math_left, math_left[0].index-start)
+                    right = self.parse_expr(current, current[0].index-start)
+                    output.append(
+                        CallArgument(len(output), BiOperatorExpr(left, math_opr, right, left.lineno, left.offset),
+                                     token.lineno, left.offset))
+                    math_left = None
+                    math_opr = None
+                else:
                     output.append(
                         CallArgument(len(output), self.parse_expr(current, current[0].index - start), token.lineno,
                                      current[0].index - start))
 
-                    current.clear()
-                break
+                current.clear()
+                continue
 
-            raise ValueError("something wrong", token)
+            elif token.type in ("IDENTIFIER", "ATTR", "STRING", "DECIMAL"):
+                current.append(token)
+                continue
 
-        return output
+            elif token.type in quickmaths:
+                if not current:
+                    errors.ViperSyntaxError(token, offset + (token.index - start), f"Unexpected '{token.value}'")
+
+                math_left = current
+                math_opr = quickmaths[token.type]
+                current = []
+                continue
+
+            elif token.type == "PAREN_OPEN":
+                depth += 1
+                current.append(token)
+                continue
+
+            elif token.type == "PAREN_CLOSE":
+                depth -= 1
+                if depth <= 0:
+                    if current:
+                        if math_left:
+                            left = self.parse_expr(math_left, math_left[0].index - start)
+                            right = self.parse_expr(current, current[0].index - start)
+                            output.append(
+                                CallArgument(len(output),
+                                             BiOperatorExpr(left, math_opr, right, left.lineno, left.offset),
+                                             token.lineno, left.offset))
+                            math_left = None
+                            math_opr = None
+                        else:
+                            output.append(
+                                CallArgument(len(output), self.parse_expr(current, current[0].index - start), token.lineno,
+                                             current[0].index - start))
+
+                        current.clear()
+                    break
+                else:
+                    current.append(token)
+                    continue
+
+            raise ValueError("something wrong", token, token.type)
+
+        if current:
+            if math_left:
+                raise ValueError
+            # can happen when the paren_close gets sheared off of by nested function calls
+            output.append(
+                CallArgument(len(output), self.parse_expr(current, current[0].index - start), current[0].lineno,
+                             current[0].index - start))
+        if index != len(tokens):
+            remaining = tokens[index+1:]
+        else:
+            remaining = None
+
+        return output, remaining
 
     @classmethod
     def quickmatch(cls, pattern: str):
@@ -403,6 +494,20 @@ class ViperParser(Parser):
 
         raise errors.ViperSyntaxError(tokens[0], 0, "Invalid Syntax")
 
+    @Parser.quickmatch("IMPORT")
+    def stmt_imprt(self, tokens):
+        imprt = tokens[0]
+        del tokens[0]
+
+        if not tokens:
+            raise errors.ViperSyntaxError(imprt, 0, "Expected a module, got nothing")
+
+        module = tokens[0]
+        if module.type != "IDENTIFIER":
+            raise errors.ViperSyntaxError(module, module.index - imprt.index, f"Expected a module name, got {module.value}")
+
+        return Import(Identifier(module.value, module.lineno, module.index - imprt.index), module.lineno, 0)
+
     @Parser.quickmatch("FUNC")
     @Parser.quickmatch("STATIC FUNC")
     def stmt_func(self, tokens):
@@ -418,6 +523,46 @@ class ViperParser(Parser):
 
         return Function(name, self.parse(tokens[-1]), args, static, tokens[0].lineno, 0)
 
+    @Parser.quickmatch("IDENTIFIER ATTR IDENTIFIER")
+    def q_expr_attr(self, tokens):
+        start = tokens[0].index
+        it = iter(tokens)
+        missed = None
+
+        children = []
+
+        for tok in it:
+            if tok.type not in ("IDENTIFIER", "ATTR"):
+                missed = tok
+                break
+
+            if tok.type == "ATTR":
+                continue
+
+            if tok.type == "IDENTIFIER":
+                children.append(tok)
+
+        attr = Attribute(
+                        Identifier(children[0].value, children[0].lineno, children[0].index - start),
+                        Identifier(children[1].value, children[1].lineno, children[1].index - start),
+                        children[0].lineno,
+                        0,
+                        [Identifier(x.value, x.lineno, x.index - start) for x in children[2:]])
+
+        if missed:
+            rest = [missed, *it]
+        else:
+            # nothing was missed, we probably hit the end of the tokens, so return what we have
+            return attr
+
+        if rest[0].type == "PAREN_OPEN": # function call
+            # dont pass the opening bracket
+            del rest[0]
+            return self.common_expr_func_call(attr, rest, rest[0].index-start)
+        else:
+            raise ValueError(attr, rest)
+
+
     @Parser.quickmatch("IDENTIFIER PAREN_OPEN")
     def q_expr_func_call(self, tokens):
         name = tokens[0]
@@ -428,42 +573,31 @@ class ViperParser(Parser):
         value = []
         start = tokens[0].index
         it = iter(tokens)
+        missed = None
+
         for tok in it:
             if tok.type not in ("IDENTIFIER", "ATTR"):
+                if tok.type != "PAREN_IN":
+                    missed = tok
                 break
 
             if tok.type == "IDENTIFIER":
                 value.append(Identifier(tok.value, tok.lineno, tok.index - start))
 
-        name = Attribute(value[0], value[1], tokens[0].lineno, 0, appended_children=value[2:])
-        vals = [x for x in it]
+        if len(value) > 1:
+            name = Attribute(value[0], value[1], tokens[0].lineno, 0, appended_children=value[2:])
+            vals = [missed, *(x for x in it)] if missed else [x for x in it]
+        else:
+            name = Identifier(value[0].name, value[0].lineno, value[0].offset - start)
+            vals = [missed, *(x for x in it)] if missed else [x for x in it]
+
         return self.common_expr_func_call(name, vals, vals[0].index - start)
 
 
     def common_expr_func_call(self, name: Union[Identifier, Attribute], tokens, offset: int):
-        start = tokens[0].index
-        args = []
-        current = []
+        args, remaining = self.parse_function_call_args(tokens, offset)
 
-        for tok in tokens:
-            if tok.type == "PAREN_CLOSE":
-                args.append(CallArgument(len(args), self.parse_expr(current, offset + (current[0].index - start)),
-                                         current[0].lineno, offset + (current[0].index - start)))
-                current.clear()
-                break
-
-            if tok.type == "COMMA":
-                if not current:
-                    raise errors.ViperSyntaxError(tok, offset + (tok.index - start), "Unexpected ','")
-
-                args.append(CallArgument(len(args), self.parse_expr(current, offset + (current[0].index - start)),
-                                         current[0].lineno, offset + (current[0].index - start)))
-                current.clear()
-                continue
-
-            current.append(tok)
-
-        return FunctionCall(name, args, tokens[0].lineno, offset)
+        return FunctionCall(name, args, tokens[0].lineno, offset), remaining
 
     def stmt_ifelseif_parse(self, tokens):
         it = iter(tokens)

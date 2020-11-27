@@ -1,8 +1,9 @@
 from setuptools import setup
 import re
+import os
 
-requirements = []
-# Viper has no requirements!
+with open(os.path.join(os.path.dirname(__file__), "requirements.txt")) as f:
+    requirements = f.readlines()
 
 with open('viper/__init__.py') as f:
     version = re.search(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', f.read(), re.MULTILINE).group(1)
@@ -39,7 +40,7 @@ setup(name='viper-lang',
         "Issue tracker": "https://github.com/IAmTomahawkx/viper-lang/issues",
       },
       version=version,
-      packages=['viper', 'viper.exts'],
+      packages=['viper', 'viper.exts', 'viper.lib'],
       license='MIT',
       description='a simple, easy to understand language with easy integration capabilities.',
       long_description=readme,
@@ -56,6 +57,7 @@ setup(name='viper-lang',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'Topic :: Internet',
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
