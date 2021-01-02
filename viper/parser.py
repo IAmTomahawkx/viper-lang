@@ -1,4 +1,5 @@
 import inspect
+import re
 
 from .keywords import VIPER_BRACKETS, VIPER_STRICT_PARSING_KEYWORDS, VIPER_KEYWORDS
 from .errors import *
@@ -6,41 +7,22 @@ from .objects import *
 from .common import *
 from . import functions
 
+_string_re = re.compile(r'".*?(?<!\\)(?:\\\\)*?"')
+
 async def get_value_from_string(raw: str, global_ns, local_ns, depth):
     raw = raw.strip()
 
+    if '"' in raw: # easy way to skip potential string parsing where it doesnt need to be
+        _str = _string_re.match(raw)
+        if _str:
+            string = _str.group(0)
+            if string == raw:
+                return _str.group(0).strip('"')
+
+
     if any([x in raw for x in "/*+-"]):
-        return await build_math(raw, global_ns, local_ns, depth) # put this above the string parsing to allow string adding
+        return await build_math(raw, global_ns, local_ns, depth)
 
-    if raw.startswith('"'):
-        # its a string
-        resp = ""
-        depth = False
-        skip_one = False
-        for index, char in enumerate(raw):
-            if skip_one:
-                skip_one = False
-                continue
-            
-            if char == "\\":
-                try:
-                    resp += raw[index+1]
-                    skip_one = True
-                    continue
-                except:
-                    raise VP_SyntaxError("Invalid escape")
-            
-            if char == '"':
-                if depth:
-                    return resp
-                depth = True
-                continue
-            if depth:
-                resp += char
-
-        raise VP_SyntaxError("Invalid string")
-
-    
     if raw.startswith(VIPER_KEYWORDS['VIPER_VARMARKER']):
         if VIPER_BRACKETS['VIPER_FUNCTIONCALL_IN'] in raw:
             var = await call_function(raw, global_ns, local_ns, depth)
