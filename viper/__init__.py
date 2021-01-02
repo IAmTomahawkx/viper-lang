@@ -4,7 +4,7 @@ from .builtins import get_builtins
 from .errors import *
 from .common import *
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 async def eval(raw_code, defaults=None, namespace=None, file="<string>", safe=False):
     """
