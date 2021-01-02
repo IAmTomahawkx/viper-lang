@@ -1,15 +1,17 @@
 static $num = randnum(0, 3)
 if ($num is 1) {
-    say("test")
-    $v = format("hi {0}", $ctx.author)
-    if ($v in $ctx.content) {
-        $ctx.send(format("Hello, {0}", ctx.author_name))
-    }
-    say($ctx.send("Hi"))
+    say("number is 1")
 } else if (num is 2) {
-    say("number is 2, sending message")
-    say($ctx.send("Blah"))
+    say("number is 2")
 } else {
-    $v = format("Number is {0}", $num)
-    say($v)
+    say("number is other")
 }
+say("test")
+$v = "hi " + $ctx.author.name
+if ($v in $ctx.content) {
+    $ctx.send("Hello, " + $ctx.author.name)
+}
+say($ctx.send("Blah"))
+$n = string($num)
+$v = "Number is " + $n
+say($v)

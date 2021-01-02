@@ -1,5 +1,6 @@
 
 static $globalvar = "hi"
+$othervar = "hello" + "world"
 
 func name(?arg, ?arg1) {
     $var = 1
