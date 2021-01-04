@@ -112,8 +112,9 @@ class Runtime:
                     for child in children:
                         val = getattr(val, child.name)
                         if not val:
-                            raise errors.ViperAttributeError(self, ident.lineno, f"Variable '{val}' has no attribute '{child.name}'")
-
+                            raise errors.ViperAttributeError(self, ident.lineno,
+                                                             f"Variable '{val}' has no attribute '{child.name}'",
+                                                             ident.parent, child)
 
                 return val
 

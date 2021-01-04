@@ -1,4 +1,5 @@
 import inspect
+from typing import Union
 
 from . import errors
 
@@ -16,14 +17,14 @@ class VPObject:
         self._help = None
 
 
-    def __getattr__(self, item):
+    def __getattr__(self, item, from_execution=True):
         if item == "_cast":
             return self._cast
 
         elif item == "_help":
             return self._help
 
-        if item.startswith("_"):
+        if from_execution and item.startswith("_"):
             raise ValueError("Cannot access private values")
 
         return self.__getattribute__(item)
@@ -52,6 +53,11 @@ class PyNativeObjectWrapper(VPObject):
         self._help = help
         if isinstance(obj, type(runtime)):
             raise ValueError
+
+    def __str__(self):
+        return f"<PyNativeWrappedObject_{self._obj}>"
+
+    __repr__ = __str__
 
     def __getattr__(self, item: str):
         if item.startswith("_"):
@@ -189,6 +195,9 @@ class Primary(VPObject):
     def __str__(self):
         return str(self._value)
 
+    def _copy(self):
+        return self.__class__(self._value, self.lineno, self._runner)
+
 class String(Primary):
     _help = "strings are used to represent text"
     def __init__(self, val, lineno: int, runner):
@@ -206,6 +215,12 @@ class String(Primary):
         assert isinstance(other, String), errors.ViperTypeError(self._runner, self.lineno, f"Cannot combine string and {other}")
         return String(self._value + other.__getattribute__("_value"), self.lineno, self._runner)
 
+    def __eq__(self, other):
+        if not isinstance(other, String):
+            return False
+
+        return self._value == other._value
+
 class Integer(Primary):
     def __init__(self, value, lineno: int, runner):
         self.lineno = lineno
@@ -221,6 +236,12 @@ class Integer(Primary):
 
         return super()._cast(typ, lineno)
 
+    def __eq__(self, other):
+        if not isinstance(other, Integer):
+            return False
+
+        return self._value == other._value
+
 class Boolean(Primary):
     def __init__(self, value, lineno: int, runner):
         self.lineno = lineno
@@ -235,6 +256,12 @@ class Boolean(Primary):
             return self
 
         return super()._cast(typ, lineno)
+
+    def __eq__(self, other):
+        if not isinstance(other, Boolean):
+            return False
+
+        return self._value == other._value
 
 
 class Function(VPObject):
@@ -254,3 +281,146 @@ class Function(VPObject):
 
     async def _call(self, runner, args):
         return await self._ast.execute(runner, args)
+
+class VPList(VPObject):
+    __slots__ = "_lineno", "_list", "_max_length"
+    def __init__(self, lineno: int, runner, default: list = None):
+        super(VPList, self).__init__(runner)
+        self._lineno = lineno
+        self._list = default or list()
+        self._max_length = None
+
+    def append(self, _, lineno: int, item: VPObject):
+        """
+        adds the given item to the list.
+        Raises ExecutionError if the list has a size limit and is full
+        """
+        if self._max_length is not None and self._length == self._max_length:
+            raise errors.ViperExecutionError(self._runner, lineno, "List is full")
+
+        self._list.append(item)
+        self._length += 1
+
+    def appendMany(self, _, lineno: int, *items: list):
+        """
+        adds the given items to the list.
+        Raises ExecutionError if the list has a size limit and adding the items would cause it to go over this limit.
+        """
+        if not items:
+            raise errors.ViperArgumentError(self._runner, lineno, "Expected at least 1 argument")
+
+        if self._max_length and len(items) + self.length(None, None) > self._max_length:
+            raise errors.ViperExecutionError(self._runner, lineno, "List is full")
+
+
+        for item in items:
+            self._list.append(item)
+
+
+    def get(self, _, lineno: int, index: Integer):
+        """
+        returns the item at the index.
+        Raises ExecutionError if the index is invalid.
+        Raises ArgumentError if the argument is not an integer
+        """
+        if not isinstance(index, Integer):
+            raise errors.ViperArgumentError(self._runner, lineno, f"Expected an integer, got {index}")
+        try:
+            return self._list[int(index._value)]
+        except IndexError:
+            if self._list:
+                error = f"The given index was out of range (valid index: 0-{len(self._list)}, got {index._value})"
+            else:
+                error = f"The given index was out of range (valid index: <List is empty>)"
+            raise errors.ViperExecutionError(self._runner, lineno, error)
+
+    def remove(self, _, lineno: int, index: Integer):
+        """
+        removes and returns the item at the given index
+        Raises ExecutionError if the index is invalid.
+        Raises ArgumentError if the argument is not an integer
+        """
+        if not isinstance(index, Integer):
+            raise errors.ViperArgumentError(self._runner, lineno, f"Expected an integer, got {index}")
+
+        try:
+            value = self._list.pop(int(index._value))
+        except IndexError:
+            if self._list:
+                error = f"The given index was out of range (valid index: 0-{len(self._list)}, got {index._value})"
+            else:
+                error = f"The given index was out of range (valid index: <List is empty>)"
+            raise errors.ViperExecutionError(self._runner, lineno, error)
+
+        else:
+            return value
+
+    def length(self, _, __):
+        return len(self._list)
+
+    def copy(self, _, __):
+        new = VPList.__new__(VPList)
+        new._runner = self._runner
+        new._list = self._list.copy()
+        new._max_length = self._max_length
+        return new
+
+    def clear(self, _, __):
+        self._list.clear()
+
+class VPDictionary(VPObject):
+    __slots__ = "_dict", "_lineno"
+    def __init__(self, lineno: int, runner, default: dict = None):
+        self._lineno = lineno
+        super(VPDictionary, self).__init__(runner)
+        self._dict = default or dict()
+
+    def _cast(self, typ, lineno):
+        if typ is String:
+            return str(self._dict)
+
+        raise errors.ViperCastError(self._runner, lineno, f"Cannot cast {self} to {typ}")
+
+    def clear(self, runner, lineno: int):
+        """
+        Clears the dictionary, removing every key
+        """
+        self._dict.clear()
+        return runner.null
+
+    def set(self, runner, lineno: int, key: Union[String, Integer], value: VPObject):
+        """
+        Sets a value to a key, allowing you to pass the same key to .get to access the value
+        """
+        if not isinstance(key, (String, Integer)):
+            raise errors.ViperExecutionError(runner, lineno,
+                                             f"Expected a String or an Integer as a key, got {key._cast(String, lineno)}")
+
+        self._dict[key] = value
+        return runner.null
+
+    def contains(self, runner, lineno: int, key: Union[String, Integer]):
+        """
+        Returns a bool indicating if a certain key exists in the dictionary
+        """
+        if not isinstance(key, (String, Integer)):
+            raise errors.ViperExecutionError(runner, lineno,
+                                             f"Expected a String or an Integer as a key, got {key._cast(String, lineno)}")
+
+        return Boolean(key in self._dict, lineno, runner)
+
+    def get(self, runner, lineno: int, key: Union[String, Integer], fallback: VPObject = None):
+        """
+        Gets the value of a key.
+        """
+        if not isinstance(key, (String, Integer)):
+            raise errors.ViperExecutionError(runner, lineno,
+                                             f"Expected a String or an Integer as a key, got {key._cast(String, lineno)}")
+
+        return self._dict.get(key, default=fallback) or runner.null
+
+    def length(self, runner, lineno: int):
+        return Integer(len(self._dict), lineno, runner)
+
+    def update(self, runner, lineno, other):
+        pass

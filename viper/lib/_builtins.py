@@ -1,4 +1,5 @@
 import inspect
+from typing import Union
 
 from viper import objects
 
@@ -33,11 +34,19 @@ def help(lineno, runner, obj=None):
 
     return objects.String(obj._help, lineno, runner)
 
+@objects.wraps_as_native("Lists out the contents of a module or wrapped PyClass")
+def dirobj(lineno, runner, obj: Union[objects.PyObjectWrapper, objects.Module]):
+    if isinstance(obj, objects.Module):
+        return objects.VPDictionary(lineno, runner, default=obj._dir)
+    return runner.null
 
 EXPORTS = {
     "string": objects.String,
     "integer": objects.Integer,
     "bool": objects.Boolean,
+    "dictionary": objects.VPDictionary,
+    "list": objects.VPList,
     "say": say,
-    "help": help
+    "help": help,
+    "dir": dirobj
 }

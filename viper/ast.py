@@ -1,3 +1,4 @@
+import inspect
 from typing import *
 from . import objects, errors
 
@@ -209,6 +210,8 @@ class Function(ASTBase):
                 value = await arg.execute(runner, _arg)
                 if value is None:
                     raise errors.ViperExecutionError(runner, self.lineno, f"No value passed for argument '{arg.name}'")
+                elif isinstance(value, objects.Primary):
+                    value = value._copy() # make them immutable
 
                 await runner.set_variable(arg.name, value, False)
 
@@ -218,13 +221,13 @@ class Function(ASTBase):
 class FunctionCall(ASTBase):
     __slots__ = "name", "args"
 
-    def __init__(self, name: Identifier, args: List[CallArgument], lineno: int, offset: int):
+    def __init__(self, name: Union[Identifier, Attribute], args: List[CallArgument], lineno: int, offset: int):
         self.name = name
         self.args = args
         super().__init__(lineno, offset)
 
     async def execute(self, runner: "Runtime"):
-        func = await runner.get_variable(self.name)
+        func = await self.name.execute(runner)
         if isinstance(func, objects.Function):
             return await func.__getattribute__("_call")(runner, self.args)
 
@@ -233,7 +236,15 @@ class FunctionCall(ASTBase):
             args = []
             for arg in self.args:
                 args.append(await arg.execute(runner))
-            return await caller(runner, self.name.lineno, *args)
+            return await caller(runner, self.lineno, *args)
+
+        elif inspect.isfunction(func):
+            # must be an internal function, it shouldn't need wrapped stuff. so pass a line number and the args
+            args = []
+            for arg in self.args:
+                args.append(await arg.execute(runner))
+
+            return await func(runner, self.lineno, *args)
 
         else:
             raise errors.ViperExecutionError(runner, self.name.lineno, f"{func} is not callable")

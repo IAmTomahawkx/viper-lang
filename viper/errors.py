@@ -62,7 +62,7 @@ class ViperStaticError(ViperExecutionError):
     pass
 
 class ViperAttributeError(ViperError):
-    def __init__(self, runner, line: int, parent, child):
+    def __init__(self, runner, line: int, err: str, parent, child):
         self._runner = runner
         self.lineno = line
         self.parent = parent
