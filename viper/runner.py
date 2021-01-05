@@ -20,12 +20,7 @@ class Runtime:
     def __init__(self, file: str = "<string>", injected: dict = None, *, allow_unsafe_imports: bool = False):
         self.scopes: List[Scope] = []
         injected = injected or {}
-        self._injected = {}
-        for name, inj in injected.items():
-            if not isinstance(inj, objects.PyNativeObjectWrapper):
-                inj = objects.PyObjectWrapper(self, inj)
-
-            self._injected[Identifier(name, -1, -1)] = inj
+        self._injected = injected
         self.raw_code = None
         self.file = file
         self.modules = {}
@@ -59,8 +54,16 @@ class Runtime:
     async def execute(self, ast: List[ASTBase] = None):
         if self.scopes:
             raise RuntimeError("Runtime is already running!")
+        injected = {}
+        for name, inj in self._injected.items():
+            if not isinstance(inj, objects.PyNativeObjectWrapper):
+                inj = objects.PyObjectWrapper(self, inj)
 
-        with self.new_scope(cls=InitialScope):
+            injected[name] = inj
+
+        self._injected = injected
+
+        with self.new_scope(cls=InitialScope, injected=injected):
             await self.set_variable(Identifier("null", -1, -1), self.null, True)
             await self._common_execute(ast)
 
@@ -78,8 +81,11 @@ class Runtime:
         await self.cleanup()
 
     @contextmanager
-    def new_scope(self, cls=Scope):
-        scope = cls(self)
+    def new_scope(self, cls=Scope, injected: dict=None):
+        if cls is InitialScope:
+            scope = cls(self, injected) # noqa
+        else:
+            scope = cls(self)
         self.scopes.append(scope)
 
         try:

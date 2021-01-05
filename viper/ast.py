@@ -123,10 +123,10 @@ class Attribute(ASTBase):
 
         if self.appended_children:
             for child in self.appended_children:
-                result = getattr(parent, child.name, None)
+                result = getattr(result, child.name, None)
 
                 if result is None:
-                    raise errors.ViperAttributeError(runner, self.lineno, parent, self.child)
+                    raise errors.ViperAttributeError(runner, self.lineno, result, self.child)
 
         return result
 
@@ -238,7 +238,7 @@ class FunctionCall(ASTBase):
                 args.append(await arg.execute(runner))
             return await caller(runner, self.lineno, *args)
 
-        elif inspect.isfunction(func):
+        elif inspect.isfunction(func) or inspect.ismethod(func):
             # must be an internal function, it shouldn't need wrapped stuff. so pass a line number and the args
             args = []
             for arg in self.args:
@@ -415,7 +415,7 @@ class BiOperatorExpr(ASTBase):
         return l <= r
 
     def _Cast(self, l, r):
-        return l._cast(r)
+        return l._cast(r, -1)
 
     async def execute(self, runner: "Runtime"):
         left = await runner.get_variable(self.left) if isinstance(self.left, Identifier) else await self.left.execute(runner)

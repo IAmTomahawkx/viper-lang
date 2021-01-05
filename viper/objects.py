@@ -5,6 +5,11 @@ from . import errors
 
 def wraps_as_native(help: str = None):
     def wraps(func):
+        if isinstance(func, type):
+            def _wraps(*args, **kwargs):
+                return PyNativeObjectWrapper(None, func(*args, **kwargs), help)
+            return _wraps
+
         return PyNativeObjectWrapper(None, func, help)
 
     return wraps

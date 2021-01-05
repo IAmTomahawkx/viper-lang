@@ -89,7 +89,7 @@ class Parser:
                         raise errors.ViperSyntaxError(consumed[0], 0, f"Unexpected {ast.__class__.__name__}")
 
                     if isinstance(ast, ElseIf):
-                        output[-1].extras.append(ast)
+                        output[-1].others.append(ast)
 
                     else:
                         if output[-1].finish is not None:
@@ -301,6 +301,9 @@ class Parser:
                 parser, r = self.match(tokens)
                 if not r:
                     return parser
+            elif tokens[-1].type == "PAREN_CLOSE":
+                tokens.pop(-1)
+                return self.parse_expr(tokens, offset, force_valid, terminator=terminator)
             else:
                 raise ValueError("wtf", parser, next_token, modifier, tokens)
 
@@ -408,7 +411,7 @@ class Parser:
                 current.clear()
                 continue
 
-            elif token.type in ("IDENTIFIER", "ATTR", "STRING", "DECIMAL"):
+            elif (depth > 1 and token.type not in ("PAREN_OPEN", "PAREN_CLOSE")) or token.type in ("IDENTIFIER", "ATTR", "STRING", "DECIMAL"):
                 current.append(token)
                 continue
 
@@ -606,7 +609,15 @@ class ViperParser(Parser):
         if pin.type != "PAREN_OPEN":
             raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index, f"Expected '(', got '{pin.value}'")
 
-        values = self.parse_function_call_args([x for x in it], pin.index - tokens[0].index)
+        args = []
+        for x in it:
+            if x.type == "PAREN_CLOSE":
+                args.append(x)
+                break
+
+            args.append(x)
+
+        values = self.parse_function_call_args(args, pin.index - tokens[0].index)[0]
         # turns out function argument parsing is almost identical to this, with the exception that this needs exactly
         # one argument, and it needs some sort of equality check. its pretty easy to extract the value from the returned
         # CallArgument, so this provides a convenient method to parse the value

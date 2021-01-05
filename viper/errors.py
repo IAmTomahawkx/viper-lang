@@ -62,11 +62,10 @@ class ViperStaticError(ViperExecutionError):
     pass
 
 class ViperAttributeError(ViperError):
-    def __init__(self, runner, line: int, err: str, parent, child):
-        self._runner = runner
-        self.lineno = line
+    def __init__(self, runner, line: int, parent, child):
         self.parent = parent
         self.child = child
+        super(ViperAttributeError, self).__init__(runner, line, f"{parent} has no attribute {child.name}")
 
 class ViperRaisedError(ViperError):
     def init(self, runner, line: int, msg: str):

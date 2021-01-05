@@ -30,7 +30,10 @@ class Scope:
         return None
 
 class InitialScope(Scope):
-    def __init__(self, runtime: "Runtime"):
+    def __init__(self, runtime: "Runtime", injected: dict):
         super().__init__(runtime)
         for name, value in _builtin_exports.items():
+            self._vars[name] = value, True
+
+        for name, value in injected.items():
             self._vars[name] = value, True
