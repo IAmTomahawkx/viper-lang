@@ -17,6 +17,9 @@ class ViperLexer(sly.Lexer):
         DIVIDE,
         MODULUS,
 
+        IS,
+        NOT,
+
         EQ,
         NE,
         GE,
@@ -65,6 +68,8 @@ class ViperLexer(sly.Lexer):
     LE = '<='
     LT = '<'
 
+    NOT = "isnot"
+
     ELIF = "else if"
 
     CAST = "as"
@@ -97,6 +102,8 @@ class ViperLexer(sly.Lexer):
     IDENTIFIER['elif'] = "ELIF"
     IDENTIFIER['else'] = ELSE
     IDENTIFIER['import'] = IMPORT
+    IDENTIFIER['is'] = IS
+    IDENTIFIER['isnot'] = "NOT"
 
     ignore = ' \t'
 

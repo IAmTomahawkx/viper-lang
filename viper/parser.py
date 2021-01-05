@@ -13,6 +13,8 @@ quickmaths = {
     "GT": GreaterThan,
     "LE": LessOrEqual,
     "LT": LessThan,
+    "IS": EqualTo,
+    "NOT": NotEqualTo,
     "PLUS": Plus,
     "MINUS": Minus,
     "MULTIPLY": Times,
