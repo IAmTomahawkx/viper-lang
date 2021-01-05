@@ -3,6 +3,8 @@ import os
 import asyncio
 
 import discord as dpy
+import prettify_exceptions
+prettify_exceptions.hook()
 
 import viper
 from viper.exts import discord
@@ -21,8 +23,10 @@ class MockDpyObject:
 
 class MockDpyContext:
     def __init__(self):
-        def error(*args, **kwargs):
-            raise dpy.HTTPException(MockDpyObject(status=400, reason="No"), "no")
+        async def error(*args):
+            print("SENDS: ", *args)
+            return self.message
+
         self.send = error
         self.author = usr = MockDpyObject(
                 name="Danny",
@@ -73,8 +77,5 @@ class MockDpyContext:
             jump_url="discord.com/url",
             author=usr
         )
-
-ns = viper.VPNamespace()
-ns['ctx'] = discord.SafeAccessContext(MockDpyContext()) # noqa
-
-loop.run_until_complete(viper.eval_file(discordpy_test, namespace=ns, safe=True)) # run the discord ext script
+runner = viper.Runtime()
+loop.run_until_complete(viper.eval_file(discordpy_test, injected={"ctx": discord.SafeAccessContext(runner, MockDpyContext())}, runtime=runner))

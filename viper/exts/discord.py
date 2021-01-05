@@ -10,7 +10,8 @@ import discord
 from discord import utils
 from discord.ext import commands
 
-from viper import VP_NONE, VP_ArgumentError, PyVP_Model
+import viper
+from viper.objects import wraps_as_native
 
 __all__ = [
     "SafeAccessTextChannel",
@@ -22,153 +23,172 @@ __all__ = [
 ]
 
 
-class SafeAccessContext(PyVP_Model):
-    def __init__(self, ctx: commands.Context):
+@wraps_as_native("A command context object")
+class SafeAccessContext:
+    def __init__(self, runner, ctx: commands.Context):
+        self._runner = runner
         self._ctx = ctx  # can't access underscored attrs, makes this safe
-        self.message = SafeAccessMessage(ctx.message)
-        self.author = SafeAccessMember(ctx.author) if ctx.guild else SafeAccessUser(ctx.author)
-        self.channel = SafeAccessTextChannel(ctx.channel)
-        self.guild = SafeAccessGuild(ctx.guild) if ctx.guild else VP_NONE
-        self.bot = SafeAccessMember(ctx.me) if ctx.guild else SafeAccessUser(ctx.me)
-        self.content = ctx.message.content
+        self.message = SafeAccessMessage(runner, ctx.message)
+        self.author = SafeAccessMember(runner, ctx.author) if ctx.guild else SafeAccessUser(runner, ctx.author)
+        self.channel = SafeAccessTextChannel(runner, ctx.channel)
+        self.guild = SafeAccessGuild(runner, ctx.guild) if ctx.guild else runner.null
+        self.bot = SafeAccessMember(runner, ctx.me) if ctx.guild else SafeAccessUser(runner, ctx.me)
+        self.content = viper.String(ctx.message.content, -1, runner)
 
-    def __repr__(self):
-        return "<Context message={0}>".format(self.message)
+    def _cast(self, typ):
+        if typ is viper.String:
+            return viper.String("<Context message={0}>".format(self.message), -1, self._runner)
+        return self._runner.null
 
-    async def send(self, message: str, embed: discord.Embed = None) -> Optional["SafeAccessMessage"]:
+    async def send(self, lineno, runner, message: viper.String) -> Optional["SafeAccessMessage"]:
         try:
-            msg = await self._ctx.send(message, embed=embed)
-            return SafeAccessMessage(msg)
+            msg = await self._ctx.send(message._value)
+            return SafeAccessMessage(self._runner, msg)
         except discord.HTTPException:
-            return VP_NONE
+            return self._runner.null
 
-
-class SafeAccessMessage(PyVP_Model):
-    def __init__(self, message: discord.Message):
+@wraps_as_native("A Message")
+class SafeAccessMessage:
+    def __init__(self, runner, message: discord.Message):
+        self._runner = runner
         self._msg = message
-        self.channel = SafeAccessTextChannel(message.channel)
-        self.guild = SafeAccessGuild(message.guild) if message.guild else VP_NONE
-        self.author = SafeAccessMember(message.author) if isinstance(message.author,
-                                                                     discord.Member) else SafeAccessUser(message.author)
-        self.content = message.content
-        self.clean_content = message.clean_content
+        self.channel = SafeAccessTextChannel(runner, message.channel)
+        self.guild = SafeAccessGuild(runner, message.guild) if message.guild else runner.null
+        self.author = SafeAccessMember(runner, message.author) if isinstance(message.author,
+                                                                     discord.Member) else SafeAccessUser(runner, message.author)
+        self.content = viper.String(message.content, -1, runner)
+        self.clean_content = viper.String(message.clean_content, -1, runner)
         self.flags = message.flags
-        self.jump_url = message.jump_url
+        self.jump_url = viper.String(message.jump_url, -1, runner)
 
-    def __repr__(self):
-        return "<Message channel={0} guild={1} author={2}>".format(self.channel, self.guild, self.author)
+    def _cast(self, typ, lineno):
+        if typ is viper.String:
+            return viper.String("<Message channel={0} guild={1} author={2}>".format(self.channel, self.guild, self.author), lineno, self._runner)
 
-
-class SafeAccessTextChannel(PyVP_Model):
-    def __init__(self, channel: discord.TextChannel):
+@wraps_as_native("A Channel")
+class SafeAccessTextChannel:
+    def __init__(self, runner, channel: discord.TextChannel):
         self._chn = channel
-        self.guild = SafeAccessGuild(channel.guild) if channel.guild else VP_NONE
-        self.id = channel.id
-        self.nsfw = channel.is_nsfw()
-        self.news = channel.is_news()
-        self.topic = channel.topic
-        self.mention = channel.mention
+        self._runner = runner
+        self.guild = SafeAccessGuild(runner, channel.guild) if channel.guild else runner.null
+        self.id = viper.Integer(channel.id, -1, runner)
+        self.nsfw = viper.Boolean(channel.is_nsfw(), -1, runner)
+        self.news = viper.Boolean(channel.is_news(), -1, runner)
+        self.topic = viper.String(channel.topic, -1, runner)
+        self.mention = viper.String(channel.mention, -1, runner)
 
-    def __repr__(self):
-        return "<Channel id={0} nsfw={1} guild={2}>".format(self.id, self.nsfw, self.guild)
+    def _cast(self, typ, lineno):
+        if typ is viper.String:
+            return viper.String("<Channel id={0} nsfw={1} guild={2}>".format(self.id._value, self.nsfw._value, self.guild), lineno, self._runner)
+        return self._runner.null
 
-    async def send(self, message: str, embed: discord.Embed = None) -> Optional[SafeAccessMessage]:
+    async def send(self, lineno, runner, message: viper.String) -> Optional[type(SafeAccessMessage)]:
         try:
-            msg = await self._chn.send(message, embed=embed)
-            return SafeAccessMessage(msg)
+            msg = await self._chn.send(message._value)
+            return SafeAccessMessage(runner, msg)
         except discord.HTTPException:
-            return VP_NONE
+            return runner.null
 
-
-class SafeAccessMember(PyVP_Model):
-    def __init__(self, member: discord.Member):
+@wraps_as_native("A Member")
+class SafeAccessMember:
+    def __init__(self, runner, member: discord.Member, guild=None):
         self._mem = member
-        self.name = member.name
-        self.id = member.id
-        self.discriminator = member.discriminator
+        self._runner = runner
+        self.name = viper.String(member.name, -1, runner)
+        self.id = viper.Integer(member.id, -1, runner)
+        self.discriminator = viper.String(member.discriminator, -1, runner)
         self.mention = member.mention
-        self.guild = SafeAccessGuild(member.guild)
-        self.nick = member.nick or VP_NONE
+        self.guild = guild or SafeAccessGuild(runner, member.guild)
+        self.nick = viper.String(member.nick, -1, runner) if member.nick else runner.null
 
-    def __repr__(self):
-        return "<Member name={0} id={1} guild={2}>".format(self.name, self.id, self.guild)
+    def _cast(self, typ, lineno):
+        if typ is viper.String:
+            return viper.String("<Member name={0} id={1} guild={2}>".format(self.name._value, self.id._value, self.guild), lineno, self._runner)
+        return self._runner.null
 
-    async def ban(self, reason=None):
-        await self._mem.ban(reason=reason)
-        return VP_NONE
+    async def ban(self, lineno, runner, reason: viper.String=None):
+        await self._mem.ban(reason=reason._value if reason else None)
+        return runner.null
 
-    async def unban(self, reason=None):
-        await self._mem.unban(reason=reason)
-        return VP_NONE
+    async def unban(self, lineno, runner, reason: viper.String=None):
+        await self._mem.unban(reason=reason._value if reason else None)
+        return runner.null
 
-    async def send_dm(self, message, embed: discord.Embed = None) -> Optional[SafeAccessMessage]:
+    async def send_dm(self, lineno, runner, message: viper.String) -> Optional[type(SafeAccessMessage)]:
         try:
-            msg = await self._mem.send(message, embed=embed)
-            return SafeAccessMessage(msg)
+            msg = await self._mem.send(message._value)
+            return SafeAccessMessage(runner, msg)
         except discord.HTTPException:
-            return VP_NONE
+            return runner.null
 
-
-class SafeAccessUser(PyVP_Model):
-    def __init__(self, user: discord.User):
+@wraps_as_native("A User")
+class SafeAccessUser:
+    def __init__(self, runner, user: discord.User):
+        self._runner = runner
         self._usr = user
-        self.name = user.name
-        self.id = user.id
-        self.discriminator = user.discriminator
-        self.mention = user.mention
+        self.name = viper.String(user.name, -1, runner)
+        self.id = viper.Integer(user.id, -1, runner)
+        self.discriminator = viper.String(user.discriminator, -1, runner)
+        self.mention = viper.String(user.mention, -1, runner)
 
-    def __repr__(self):
-        return "<User name={0} id={1}>".format(self.name, self.id)
+    def _cast(self, typ, lineno):
+        if typ is viper.String:
+            return viper.String("<User name={0} id={1}>".format(self.name, self.id), lineno, self._runner)
+        return self._runner.null
 
-    async def send_dm(self, message, embed: discord.Embed = None) -> Optional[SafeAccessMessage]:
+    async def send_dm(self, lineno, runner, message) -> Optional[type(SafeAccessMessage)]:
         try:
-            msg = await self._usr.send(message, embed=embed)
-            return SafeAccessMessage(msg)
+            msg = await self._mem.send(message._value)
+            return SafeAccessMessage(runner, msg)
         except discord.HTTPException:
-            return VP_NONE
+            return runner.null
 
-class SafeAccessGuild(PyVP_Model):
-    def __init__(self, guild: discord.Guild):
+@wraps_as_native("A Guild")
+class SafeAccessGuild:
+    def __init__(self, runner, guild: discord.Guild):
         self._guild = guild
-        self.member_count = guild.member_count
-        self.owner = SafeAccessUser(guild.owner) # this needs to be a user to avoid recursion
-        self.description = guild.description
-        self.name = guild.name
-        self.id = guild.id
+        self._runner = runner
+        self.member_count = viper.Integer(guild.member_count, -1, runner)
+        self.owner = SafeAccessMember(runner, guild.owner, self) if guild.owner else runner.null
+        self.description = viper.String(guild.description, -1, runner)
+        self.name = viper.String(guild.name, -1, runner)
+        self.id = viper.Integer(guild.id, -1, runner)
 
-    def __repr__(self):
-        return "<Guild name={0} id={1} owner={2}>".format(self.name, self.id, self.owner)
+    def _cast(self, typ, lineno):
+        if typ is viper.String:
+            return viper.String("<Guild name={0} id={1} owner={2}>".format(self.name, self.id, self.owner), lineno, self._runner)
+        return self._runner.null
 
-    def get_member(self, id_or_name: Union[str, int]) -> Optional[SafeAccessMember]:
-        if isinstance(id_or_name, int):
-            member = self._guild.get_member(id_or_name)
+    def get_member(self, lineno, runner, id_or_name: Union[viper.String, viper.Integer]) -> Optional[type(SafeAccessMember)]:
+        if isinstance(id_or_name, viper.Integer):
+            member = self._guild.get_member(id_or_name._value)
             if member:
-                return SafeAccessMember(member)
+                return SafeAccessMember(self._runner, member)
 
-            return VP_NONE
+            return self._runner.null
 
         elif isinstance(id_or_name, str):
             member = self._guild.get_member_named(id_or_name)
             if member:
-                return SafeAccessMember(member)
+                return SafeAccessMember(self._runner, member)
 
-            return VP_NONE
+            return self._runner.null
 
-        raise VP_ArgumentError("get_member expected a string or an integer, not {0!r}".format(id_or_name))
+        raise viper.ViperExecutionError(runner, lineno, "get_member expected a string or an integer, not {0!r}".format(id_or_name))
 
-    def get_channel(self, id_or_name: Union[str, int]) -> Optional[SafeAccessTextChannel]:
-        if isinstance(id_or_name, int):
-            channel = self._guild.get_channel(id_or_name)
+    def get_channel(self, lineno, runner, id_or_name: Union[viper.String, viper.Integer]) -> Optional[type(SafeAccessTextChannel)]:
+        if isinstance(id_or_name, viper.Integer):
+            channel = self._guild.get_channel(id_or_name._value)
             if channel:
-                return SafeAccessTextChannel(channel)
+                return SafeAccessTextChannel(runner, channel)
 
-            return VP_NONE
+            return runner.null
 
-        elif isinstance(id_or_name, str):
-            channel = utils.get(self._guild.text_channels, name=id_or_name)
+        elif isinstance(id_or_name, viper.String):
+            channel = utils.get(self._guild.text_channels, name=id_or_name._value)
             if channel:
-                return SafeAccessTextChannel(channel)
+                return SafeAccessTextChannel(runner, channel)
 
-            return VP_NONE
+            return runner.null
 
-        raise VP_ArgumentError("get_channel expected a string or an integer, not {0!r}".format(id_or_name))
+        raise viper.ViperExecutionError(runner, lineno, "get_channel expected a string or an integer, not {0!r}".format(id_or_name))
