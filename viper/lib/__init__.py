@@ -10,7 +10,8 @@ MODULES = {
     "regex": False,
     "files": True,
     "requests": True,
-    "json": False
+    "json": False,
+    "random": False
 }
 
 def is_importable(module):
