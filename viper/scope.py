@@ -29,6 +29,15 @@ class Scope:
             raise ViperNameError(runner, item.lineno, f"Variable '{item.name}' not found")
         return None
 
+    def del_variable(self, runner: "Runtime", item: Identifier, *, raise_empty=True):
+        if item.name in self._vars:
+            del self._vars[item.name]
+            return
+
+        if raise_empty:
+            raise ViperNameError(runner, item.lineno, f"Variable '{item.name}' not found")
+        return None
+
 class InitialScope(Scope):
     def __init__(self, runtime: "Runtime", injected: dict):
         super().__init__(runtime)

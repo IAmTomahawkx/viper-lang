@@ -13,7 +13,9 @@ _quick_exec = (
     Assignment,
     FunctionCall,
     If,
-    Import
+    Import,
+    Try,
+    Throw
 )
 
 class Runtime:

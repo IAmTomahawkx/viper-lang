@@ -313,6 +313,42 @@ class Import(ASTBase):
     async def execute(self, runner: "Runtime"):
         return await runner.import_module(self.module, self.module.lineno)
 
+class Try(ASTBase):
+    __slots__ = "code", "catch"
+    def __init__(self, code: List[Any], lineno: int, offset: int):
+        self.code = code
+        self.catch: Optional["Catch"] = None
+        super().__init__(lineno, offset)
+
+    async def execute(self, runner: "Runtime"):
+        try:
+            await runner._common_execute(self.code)
+        except errors.ViperRaisedError as e:
+            if self.catch is not None:
+                await runner.set_variable(Identifier("error", -1, -1), objects.String(e.message, -1, runner), True)
+                await runner._common_execute(self.catch.code)
+                runner.scope.del_variable(runner, Identifier("error", -1, -1))
+
+
+class Catch(ASTBase):
+    __slots__ = "code",
+    def __init__(self, code: List[Any], lineno: int, offset: int):
+        self.code = code
+        super().__init__(lineno, offset)
+
+class Throw(ASTBase):
+    __slots__ = "expr",
+    def __init__(self, expr: Any, lineno: int, offset: int):
+        self.expr = expr
+        super().__init__(lineno, offset)
+
+    async def execute(self, runner: "Runtime"):
+        value = await self.expr.execute(runner)
+        if not isinstance(value, objects.String):
+            raise errors.ViperTypeError(runner, self.expr.lineno, f"Expected String, got {value}")
+
+        raise errors.ViperRaisedError(runner, self.expr.lineno, value._value)
+
 class Operator:
     __slots__ = ()
 

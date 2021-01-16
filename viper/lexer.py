@@ -51,7 +51,10 @@ class ViperLexer(sly.Lexer):
 
         IDENTIFIER,
 
-        IMPORT
+        IMPORT,
+        CATCH,
+        THROW,
+        TRY
     )
     ignore_comment = r'\/\/.*'
 
@@ -104,6 +107,9 @@ class ViperLexer(sly.Lexer):
     IDENTIFIER['import'] = IMPORT
     IDENTIFIER['is'] = IS
     IDENTIFIER['isnot'] = "NOT"
+    IDENTIFIER['catch'] = CATCH
+    IDENTIFIER['throw'] = THROW
+    IDENTIFIER['try'] = TRY
 
     ignore = ' \t'
 

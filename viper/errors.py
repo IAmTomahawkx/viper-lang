@@ -68,8 +68,7 @@ class ViperAttributeError(ViperError):
         super(ViperAttributeError, self).__init__(runner, line, f"{parent} has no attribute {child.name}")
 
 class ViperRaisedError(ViperError):
-    def init(self, runner, line: int, msg: str):
-        super().__init__(runner, line, msg)
+    pass
 
     def __repr__(self):
         return f"[Raised Error: {self.message}]"

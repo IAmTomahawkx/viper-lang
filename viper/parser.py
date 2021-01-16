@@ -99,6 +99,15 @@ class Parser:
 
                         output[-1].finish = ast
 
+                elif isinstance(ast, Catch):
+                    if not isinstance(output[-1], Try):
+                        raise errors.ViperSyntaxError(consumed[0], 0, f"Unexpected {ast.__class__.__name__}")
+
+                    if output[-1].catch is not None:
+                        raise errors.ViperSyntaxError(consumed[0], 0, "Can only have 1 `catch` block")
+
+                    output[-1].catch = ast
+
                 else:
                     output.append(ast)
 
@@ -124,6 +133,15 @@ class Parser:
                         raise errors.ViperSyntaxError(consumed[0], 0, "Can only have 1 `else` block")
 
                     output[-1].finish = ast
+
+            elif isinstance(ast, Catch):
+                if not isinstance(output[-1], Try):
+                    raise errors.ViperSyntaxError(consumed[0], 0, f"Unexpected {ast.__class__.__name__}")
+
+                if output[-1].catch is not None:
+                    raise errors.ViperSyntaxError(consumed[0], 0, "Can only have 1 `catch` block")
+
+                output[-1].catch = ast
 
             else:
                 output.append(ast)
@@ -190,7 +208,10 @@ class Parser:
             "ELIF",
             "ELSE",
             "RETURN",
-            "EQUALS"
+            "EQUALS",
+            "TRY",
+            "CATCH",
+            "THROW"
         )
         for x in tokens:
             if x.type in stmt_tokens:
@@ -512,6 +533,21 @@ class ViperParser(Parser):
             raise errors.ViperSyntaxError(module, module.index - imprt.index, f"Expected a module name, got {module.value}")
 
         return Import(Identifier(module.value, module.lineno, module.index - imprt.index), module.lineno, 0)
+
+    @Parser.quickmatch("TRY")
+    def stmt_try(self, tokens):
+        assert len(tokens) == 2 and isinstance(tokens[1], Block)
+        return Try(self.parse(tokens[1]), tokens[0].lineno, 0)
+
+    @Parser.quickmatch("THROW")
+    def stmt_throw(self, tokens):
+        expr = self.parse_expr(tokens[1:], tokens[1].index - tokens[0].index)
+        return Throw(expr, tokens[0].lineno, 0)
+
+    @Parser.quickmatch("CATCH")
+    def stmt_catch(self, tokens):
+        assert len(tokens) == 2 and isinstance(tokens[1], Block)
+        return Catch(self.parse(tokens[1]), tokens[0].lineno, 0)
 
     @Parser.quickmatch("FUNC")
     @Parser.quickmatch("STATIC FUNC")
