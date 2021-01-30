@@ -1,3 +1,4 @@
+import functools
 import inspect
 from typing import *
 from . import objects, errors
@@ -407,6 +408,23 @@ class LessThan(Operator):
 class LessOrEqual(Operator):
     pass
 
+def unwrap_wrapped(func):
+    @functools.wraps(func)
+    def wrapped(self, runner, l, r):
+        _l = l
+        _r = r
+        if isinstance(l, objects.Primary):
+            l = l._value
+        if isinstance(r, objects.Primary):
+            r = r._value
+
+        resp = func(self, l, r)
+        if isinstance(_l, objects.Primary):
+            return _l.__class__(resp, self.lineno, runner)
+        if not isinstance(resp, objects.VPObject):
+            return objects.PyObjectWrapper(runner, resp)
+        return resp
+    return wrapped
 
 class BiOperatorExpr(ASTBase):
     __slots__ = ('left', 'op', 'right')
@@ -417,36 +435,47 @@ class BiOperatorExpr(ASTBase):
         self.right = right
         super().__init__(lineno, offset)
 
+    @unwrap_wrapped
     def _Plus(self, l, r):
         return l + r
 
+    @unwrap_wrapped
     def _Minus(self, l, r):
         return l - r
 
+    @unwrap_wrapped
     def _Times(self, l, r):
         return l * r
 
+    @unwrap_wrapped
     def _Divide(self, l, r):
         return l // r
 
+    @unwrap_wrapped
     def _Modulus(self, l, r):
         return l % r
 
+    @unwrap_wrapped
     def _EqualTo(self, l, r):
         return l == r
 
+    @unwrap_wrapped
     def _NotEqualTo(self, l, r):
         return l != r
 
+    @unwrap_wrapped
     def _GreaterThan(self, l, r):
         return l > r
 
+    @unwrap_wrapped
     def _GreaterOrEqual(self, l, r):
         return l >= r
 
+    @unwrap_wrapped
     def _LessThan(self, l, r):
         return l < r
 
+    @unwrap_wrapped
     def _LessOrEqual(self, l, r):
         return l <= r
 
@@ -458,4 +487,4 @@ class BiOperatorExpr(ASTBase):
         right = await runner.get_variable(self.right) if isinstance(self.right, Identifier) else await self.right.execute(
             runner)
 
-        return getattr(self, '_' + self.op.__name__)(left, right)
+        return getattr(self, '_' + self.op.__name__)(runner, left, right)
