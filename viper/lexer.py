@@ -1,4 +1,5 @@
 import sly
+from . import errors
 
 class ViperLexer(sly.Lexer):
     tokens = (
@@ -119,5 +120,4 @@ class ViperLexer(sly.Lexer):
         return t
 
     def error(self, t):
-        print("Illegal character '%s'" % t.value[0])
-        self.index += 1
+        raise errors.ViperSyntaxError(t, 0, "Illegal character '%s'" % t.value[0])

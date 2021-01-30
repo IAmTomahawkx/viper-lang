@@ -50,7 +50,7 @@ class ViperSyntaxError(ViperError):
         self.message = msg
 
     def __str__(self):
-        return f"{{line {self._token.lineno}, offset {self._offset}, token '{self._token.value}': {self.message}}}"
+        return f"<line {self._token.lineno}, offset {self._offset}, token '{self._token.value.strip()}': {self.message}>"
 
 class ViperArgumentError(ViperExecutionError):
     pass
