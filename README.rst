@@ -46,7 +46,7 @@ The asyncio docs can be found `here <https://docs.python.org/3/library/asyncio.h
 
     import viper
     import asyncio
-    code = '$myvar = "hi"'
+    code = 'myvar = "hi"'
     asyncio.run(viper.eval(code))
 
 or
@@ -57,58 +57,38 @@ or
     import viper
     asyncio.run(viper.eval_file("myfile.vp"))
 
-you can also pass defaults to be injected into the namespace, as such
+you can pass defaults to be injected into the namespace, as such
 
 .. code-block:: python
 
     import asyncio
     import viper
-    asyncio.run(viper.eval("say($myvar)", {"myvar": "blue"}))
+    asyncio.run(viper.eval("say(myvar)", injected={"myvar": "blue"}))
 
-another way to pass defaults is to pass a Viper namespace to the eval
-
-.. code-block:: python
-
-    import asyncio
-    import viper
-    namespace = viper.VPNamespace()
-    namespace['myvar'] = "blue"
-
-    # creating a static variable
-    namespace['mystaticvar'] = "red", True
-
-    asyncio.run(viper.eval("say($myvar)", namespace=namespace))
-
-you can disable "unsafe" builtins such as file reading/writing by passing the `safe` keyword to `viper.eval`/`viper.eval_file`.
+for more control over the creation, you can create your own `viper.Runtime` instance
 
 .. code-block:: python
 
     import asyncio
     import viper
 
-    asyncio.run(viper.eval('$myvar = read("names.txt")', safe=True)) # raises VP_NameError,
-    # as the variable `read` doesnt exist due to safe mode
+    runtime = viper.Runtime("<input>", injected={"myvar": "blue"}, allow_unsafe_imports=False)
+    code = "say(myvar)"
+    asyncio.run(runtime.run(code))
 
-Speaking of errors, Viper stack traces are now available. They can be accessed by printing out `error.format_stack()` on any VP_Error.
+You can use this to disable features like unsafe modules, such as the `requests` module, or the `files` module.
 
 .. code-block:: python
 
     import asyncio
     import viper
 
-    try:
-        asyncio.run(viper.eval("blah"))
-    except viper.VP_Error as e:
-        print(e.format_stack())
+    runtime = viper.Runtime("<input>", allow_unsafe_imports=False)
+    code = "import files"
+    asyncio.run(runtime.run(code))
 
-will print out:
+The above will raise a ViperModuleError.
 
-.. code-block:: python
-
-    File <string>, top-level:
-        blah
-
-    SyntaxError: blah
 
 Syntax
 ---------
@@ -121,11 +101,11 @@ name. static variables cannot be changed by anything other than intervention in 
 
 .. code-block::
 
-    $myvar = "red"
+    myvar = "red"
 
-    static $mystaticvar = "blue"
+    static mystaticvar = "blue"
 
-    $mystaticvar = "hello"  <-- StaticError
+    mystaticvar = "hello"  <-- StaticError
 
 functions
 ~~~~~~~~~~
@@ -176,27 +156,37 @@ functions are called the same as in python:
 
 builtins
 ~~~~~~~~~
-there are several built in functions that will be available inside of viper. They can be seen in the `viper/builtins.py` file.
-there are a couple builtin not defined in this file, the `namespace` variable, which points back to the global namespace.
-there is also `true` / `false`, which are the viper booleans (AKA python booleans).
+the viper namespace is left quite empty by default. The following are included in the default namespace:
+- say(*args) - equivilant to `print` in python.
+- help(obj) - prints an objects help.
+- dir(obj) - lists all attributes an object has.
+
+Types are included in the namespace:
+- `string`
+- `integer`
+- `bool`
+- `dictionary`
+- `list`
+
+there is also `true` / `false`, which are the booleans.
 
 a full example
 ----------------
 
 .. code-block::
 
-    static $globalvar = "hi"
+    static globalvar = "hi"
 
     func name(arg, ?arg1) {
-        $var = 1
-        if ($var is 1) {
-            $var += 1
+        var = 1
+        if (var is 1) {
+            var += 1
         }
-        else if ($var is not 1) {
-            $var = "stuff"
+        elif (var is not 1) {
+            var = "stuff"
         }
         else {
-            $var = none
+            var = none
         }
     }
 
@@ -206,31 +196,8 @@ a full example
     }
     main()
 
-Customizing viper
------------------
-most of viper can be edited by editing `viper/keywords.py` file. Most of the options are pretty self explanatory. \
-These can also be changed at runtime, by importing the keywords file and changing the dictionaries
-
-.. code:: py
-
-    import viper.keywords
-    viper.keywords.VIPER_KEYWORDS['VIPER_VARMARKER'] = "%"
-    # variables will now be accessed with % instead of $
-
 Discord.py integration
 -----------------------
 to make things easier, the `viper.exts.discord` module makes it easy to pass safe objects, with limited accessibility, to viper,
 making it easy to pass discord.py models (indirectly) to your users, without fear of leaking your token and/or other sensitive data. \
 Simply pass a discord.py model to its respective `exts.discord` counterpart, and pass that to your viper namespace
-
-.. code:: py
-
-    import viper
-    from viper.exts import discord as viper_discord
-
-    async def on_message(message):
-        namespace = viper.VPNamespace()
-        safe_message = viper_discord.SafeAccessMessage(message)
-        namespace['msg'] = safe_message
-
-        await viper.eval('say($msg.channel.send("hi"))', namespace=namespace, safe=True)

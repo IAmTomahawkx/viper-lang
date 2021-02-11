@@ -1,28 +1,13 @@
+static globalvar = "hi"
 
-static $globalvar = "hi"
-$othervar = "hello" + "world"
-
-func name(?arg, ?arg1) {
-    $var = 1
-    if ($var is 1) {
-        $var += 1
-    }
-    else if ($var is not 1) {
-        $var = "stuff"
-    }
-    else {
-        $var = none
+func test(a, ?b) {
+    say(a as string)
+    if (b == null) {
+        say("No b")
+    } else {
+        say("b is " + b as string)
     }
 }
 
-func main() {
-    say("hi")
-    name()
-}
-main()
-
-try {
-    raise "Some Error"
-} error {
-    say(error)
-}
+test(1)
+test(2, 3)

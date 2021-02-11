@@ -7,7 +7,7 @@ python:
 install:
   - pip install coverage
   - pip install git+https://github.com/ShineyDev/prettify.py.git
-  - pip install discord.py==1.4.1
+  - pip install discord.py==1.5.1
 
 script:
   - coverage run test.py

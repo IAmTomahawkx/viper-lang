@@ -1,50 +1,65 @@
-from .parser import build_code_async
-from .objects import *
-from .builtins import get_builtins
+from .runner import Runtime
+from .scope import Scope, InitialScope
+from . import objects
+from .objects import String, Integer, Boolean
 from .errors import *
-from .common import *
 
-__version__ = "0.0.4"
+from typing import Union
+from os import PathLike as _PathLike
+from io import FileIO as _FileIO
 
-async def eval(raw_code, defaults=None, namespace=None, file="<string>", safe=False):
+__version__ = "1.0.0"
+
+async def eval(code: str, filename="<string>", injected: dict=None, runtime: Runtime=None) -> Runtime:
     """
-    :param raw_code: :class:`str` the code to evaluate
-    :param defaults: Optional[:class:`dict`] defaults to be statically injected into the namespace before parsing the file
-    :param namespace: Optional[:class:`VPNamespace`] a pre-built namespace, useful to keep variables alive between evals
-    :param file: :class:`str`
-    :param safe: :class:`bool` whether "unsafe" builtins should be used. These include things like file-manipulation parameters.
-    :return: :class:`VPNamespace`
+    Evaluates the passed code in the viper runtime. This is a basic entrypoint into running viper code.
+
+    Parameters
+    -----------
+    code: :class:`str`
+        the code to evaluate
+    filename: Optional[:class:`str`]
+        the filename of the code you are running from. Useful in tracebacks. Defaults to "<string>"
+    injected: Optional[:class:`dict`]
+        a dictionary of variables to inject into the namespace before evaluating the code.
+    runtime: Optional[:class:`Runtime`]
+        a pre-existing runtime to use instead of creating one
+
+    Returns
+    --------
+    :class:`Runtime` the :class:`Runtime` that the code was evaluated with
     """
-    if defaults is not None and not isinstance(defaults, dict):
-        raise ValueError("defaults expected a dict")
-    
-    if namespace is not None and not isinstance(namespace, VPNamespace):
-        raise ValueError("namespace expected a VPNamespace")
-    
-    module_ns = namespace or VPNamespace()
-    module_ns.buildmode(True)
+    if runtime and injected:
+        runtime._injected.update(injected)
 
-    module_ns.update(get_builtins(safe))
+    runtime = runtime or Runtime(filename, injected)
+    await runtime.run(code)
+    return runtime
 
-    if defaults:
-        module_ns.update({a: ((b, True) if not isinstance(b, tuple) else b) for a, b in defaults.items()})
-    
-    module_ns['globals'] = module_ns
-    module_ns.buildmode(False)
-    
-    await build_code_async(raw_code, module_ns, None, file=file)
-    return module_ns
-
-async def eval_file(fp, defaults=None, namespace=None, safe=False):
+async def eval_file(fp: Union[_PathLike, str, _FileIO], filename: str=None, injected: dict=None, runtime: Runtime=None) -> Runtime:
     """
-    :param fp: :class:`str` the file path to read and parse
-    :param defaults: Optional[:class`dict`] defaults to be statically injected into the namespace before parsing the file
-    :param namespace: Optional[:class:`VPNamespace`] a pre-built namespace, useful to keep variables alive between evals
-    :param safe: :class:`bool` whether "unsafe" builtins should be used. These include things like file-manipulation parameters.
-    :return: :class:`VPNamespace`
-    """
-    with open(fp) as f:
-        data = f.read()
-    
-    return await eval(data, defaults, namespace, file=fp, safe=safe)
+    A quicker way to evaluate files. Reads the given file and evaluates the contents.
 
+    Parameters
+    -----------
+    fp: Union[:class:`os.PathLike`, :class:`str`, :class:`io.FileIO`]
+        the file path or object to read from
+    filename: Optional[:class:`str`]
+        the name of the file. Defaults to the name of the file.
+    injected: Optional[:class:`dict`]
+        a dictionary of variables to inject into the namespace before evaluating the code.
+
+    Returns
+    --------
+    :class:`Runtime` the :class:`Runtime` that the code was evaluated with
+
+    """
+    if isinstance(fp, (_PathLike, str)):
+        with open(fp, mode="r", encoding="utf8") as file:
+            code = file.read()
+            filename = filename or str(fp)
+    else:
+        code = fp.read()
+        filename = filename or fp.name
+
+    return await eval(code, filename, injected=injected, runtime=runtime)
