@@ -157,7 +157,7 @@ functions are called the same as in python:
 builtins
 ~~~~~~~~~
 the viper namespace is left quite empty by default. The following are included in the default namespace:
-- say(*args) - equivilant to `print` in python.
+- say(\*args) - equivilant to `print` in python.
 - help(obj) - prints an objects help.
 - dir(obj) - lists all attributes an object has.
 
