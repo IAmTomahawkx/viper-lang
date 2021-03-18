@@ -95,9 +95,8 @@ Syntax
 
 Variables
 ~~~~~~~~~~
-variables are set like in python, but with a dollar sign ($) in front of the name. variables are retrieved in the same way,
-the name with a dollar sign ($) in front. variables can be marked as `static` by putting `static` in front of the variable
-name. static variables cannot be changed by anything other than intervention in python code
+Variables are set and retrieved like in Python, variables can be marked as `static` by putting `static` in front of the variable
+name. Static variables cannot be changed by anything other than intervention in python code
 
 .. code-block::
 
