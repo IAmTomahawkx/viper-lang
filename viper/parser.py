@@ -189,7 +189,7 @@ class Parser:
                     output.append(token)
 
         if depth > 0:
-            raise errors.ViperSyntaxError(token, "Missing closing bracket") # noqa
+            raise errors.ViperSyntaxError(token, 0, "Missing closing bracket") # noqa
 
         return output
 
