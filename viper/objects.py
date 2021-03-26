@@ -90,9 +90,10 @@ class PyNativeObjectWrapper(VPObject):
         if not callable(item):
             raise errors.ViperExecutionError(runner, line, f"<PyObject_{item}> is not callable")
 
-        resp = item(line, runner, *args)
-        if inspect.isawaitable(resp):
-            resp = await resp
+        if inspect.iscoroutine(item) or inspect.iscoroutinefunction(item):
+            resp = await item(line, runner, *args)
+        else:
+            resp = item(line, runner, *args)
 
         if not isinstance(resp, VPObject):
             resp = PyObjectWrapper(runner, resp)
@@ -119,10 +120,12 @@ class PyObjectWrapper(PyNativeObjectWrapper):
                 _args.append(arg._value)
             else:
                 _args.append(arg)
-            
-        resp = item(*_args)
-        if inspect.isawaitable(resp):
-            resp = await resp
+ 
+        if inspect.iscoroutine(item) or inspect.iscoroutinefunction(item):
+            resp = await item(*_args)
+        else:
+            resp = item(*_args)
+
 
         if not isinstance(resp, VPObject):
             if isinstance(resp, str):
