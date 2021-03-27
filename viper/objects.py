@@ -120,11 +120,12 @@ class PyObjectWrapper(PyNativeObjectWrapper):
                 _args.append(arg._value)
             else:
                 _args.append(arg)
-
+ 
         if inspect.iscoroutine(item) or inspect.iscoroutinefunction(item):
             resp = await item(*_args)
         else:
             resp = item(*_args)
+
 
         if not isinstance(resp, VPObject):
             if isinstance(resp, str):
