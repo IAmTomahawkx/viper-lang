@@ -58,7 +58,7 @@ class Runtime:
             raise RuntimeError("Runtime is already running!")
         injected = {}
         for name, inj in self._injected.items():
-            if not isinstance(inj, objects.PyNativeObjectWrapper):
+            if not isinstance(inj, objects.VPObject):
                 inj = objects.PyObjectWrapper(self, inj)
 
             injected[name] = inj
