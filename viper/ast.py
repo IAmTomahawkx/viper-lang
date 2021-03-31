@@ -268,7 +268,7 @@ class If(ASTBase):
 
         for elseif in self.others:
             if await elseif.condition.execute(runner):
-                return await runner._run_function_body(self.code)
+                return await runner._run_function_body(elseif.code)
 
         if self.finish:
             return await runner._run_function_body(self.finish.code)
