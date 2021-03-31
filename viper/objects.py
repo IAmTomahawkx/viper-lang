@@ -47,6 +47,9 @@ class NULL(VPObject):
         return "null"
     
     __repr__ = __str__
+    
+    def __bool__(self):
+        return False
 
 class PyNativeObjectWrapper(VPObject):
     """
@@ -247,6 +250,9 @@ class Integer(Primary):
             return False
 
         return self._value == other._value
+    
+    def __bool__(self):
+        return self._value != 0
 
 class Boolean(Primary):
     def __init__(self, value, lineno: int, runner):
@@ -269,7 +275,9 @@ class Boolean(Primary):
 
         return self._value == other._value
 
-
+    def __bool__(self):
+        return self._value
+    
 class Function(VPObject):
     def __init__(self, ast, runner):
         self._ast = ast
