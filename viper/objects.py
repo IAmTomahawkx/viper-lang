@@ -123,10 +123,10 @@ class PyObjectWrapper(PyNativeObjectWrapper):
             else:
                 _args.append(arg)
  
+
         resp = item(*_args)
         if inspect.isawaitable(resp):
             resp = await resp
-
 
         if not isinstance(resp, VPObject):
             if isinstance(resp, str):
