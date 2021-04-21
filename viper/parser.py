@@ -193,7 +193,7 @@ class Parser:
 
         return output
 
-    def match(self, tokens: List[Union[Token, Block]]) -> Optional[ASTBase]:
+    def match(self, tokens: List[Union[Token, Block]]) -> Optional[Statement]:
         pass
 
     def valid_expr(self, tokens: List[Union[Token, Block]]) -> Optional[Token]:
@@ -219,7 +219,7 @@ class Parser:
 
         return None
 
-    def _from_token(self, token: Token, offset: int) -> Union[ASTBase, objects.Primary]:
+    def _from_token(self, token: Token, offset: int) -> Union[Statement, objects.Primary]:
         if token.type in quick_idents:
             return PrimaryWrapper(quick_idents[token.type], token.value, token.lineno, offset)
 
@@ -271,7 +271,7 @@ class Parser:
 
         return Cast(ident, Identifier(typ.value, typ.lineno, offset + (typ.index-tokens[0].index)), ident.lineno, offset), tokens[4:]
 
-    def parse_expr(self, tokens: List[Union[Token, Block]], offset=0, force_valid=False, *, terminator=None) -> Union[ASTBase, objects.Primary]:
+    def parse_expr(self, tokens: List[Union[Token, Block]], offset=0, force_valid=False, *, terminator=None) -> Union[Statement, objects.Primary]:
         if not force_valid:
             maybe_stmt = self.valid_expr(tokens)
             assert maybe_stmt is None, errors.ViperSyntaxError(maybe_stmt, offset + maybe_stmt.index - tokens[0].index,

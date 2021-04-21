@@ -1,6 +1,6 @@
 from typing import *
 from . import objects
-from .ast import Identifier, ASTBase
+from .ast import Identifier, Statement
 from .errors import ViperNameError, ViperStaticError
 from .lib._builtins import EXPORTS as _builtin_exports
 
