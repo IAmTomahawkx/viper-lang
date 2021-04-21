@@ -661,16 +661,16 @@ class ViperParser(Parser):
         # CallArgument, so this provides a convenient method to parse the value
 
         if not values:
-            raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index, "Expected a condition, got nothing")
+            raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index, "Expected an expression, got nothing")
 
         if len(values) > 1:
             raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index, "Too many expressions for an if statement.")
 
         values = values[0]
         values = values.value
-        if not isinstance(values, BiOperatorExpr):
+        if not isinstance(values, Expr):
             raise errors.ViperSyntaxError(pin, pin.index - tokens[0].index,
-                                          f"Expected a comparison, got <{values.__class__.__name__}>")
+                                          f"Expected an expression, got <{values.__class__.__name__}>")
 
         return values
 
