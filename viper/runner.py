@@ -44,21 +44,21 @@ class Runtime:
         self.raw_code = source
         return lex.tokenize(source)
 
-    def parse(self, tokens: List[Token], parser=ViperParser()) -> List[ASTBase]:
+    def parse(self, tokens: List[Token], parser=ViperParser()) -> List[Statement]:
         """
         turns the tokens provided by :ref:`~tokenize` into an Abstract Syntax Tree
         :param tokens: the Tokens provided by :ref:`~tokenize`
         :param parser: an optional parser to use instead of ViperParser. Only recommended if you know what youre doing.
-        :return: List[ASTBase]
+        :return: List[Statement]
         """
         return parser.parse(tokens)
 
-    async def execute(self, ast: List[ASTBase] = None):
+    async def execute(self, ast: List[Statement] = None):
         if self.scopes:
             raise RuntimeError("Runtime is already running!")
         injected = {}
         for name, inj in self._injected.items():
-            if not isinstance(inj, objects.PyNativeObjectWrapper):
+            if not isinstance(inj, objects.VPObject):
                 inj = objects.PyObjectWrapper(self, inj)
 
             injected[name] = inj
@@ -103,7 +103,7 @@ class Runtime:
 
     async def set_variable(self, ident: Identifier, value: Any, static: bool):
         scope = self.scopes[-1]
-        if isinstance(value, ASTBase):
+        if isinstance(value, Statement):
             value = await value.execute(self)
 
         scope.set_variable(self, ident, value, static)
@@ -128,10 +128,10 @@ class Runtime:
 
         raise errors.ViperNameError(self, ident.lineno, f"Variable '{ident.name}' not found")
 
-    async def _run_function_body(self, code: List[ASTBase]) -> Any:
+    async def _run_function_body(self, code: List[Statement]) -> Any:
         return await self._common_execute(code)
 
-    async def _common_execute(self, code: List[ASTBase]) -> Any:
+    async def _common_execute(self, code: List[Statement]) -> Any:
         for block in code:
             if type(block) in _quick_exec:
                 await block.execute(self)

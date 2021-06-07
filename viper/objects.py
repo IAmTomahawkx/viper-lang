@@ -47,6 +47,9 @@ class NULL(VPObject):
         return "null"
     
     __repr__ = __str__
+    
+    def __bool__(self):
+        return False
 
 class PyNativeObjectWrapper(VPObject):
     """
@@ -90,10 +93,9 @@ class PyNativeObjectWrapper(VPObject):
         if not callable(item):
             raise errors.ViperExecutionError(runner, line, f"<PyObject_{item}> is not callable")
 
-        if inspect.iscoroutine(item) or inspect.iscoroutinefunction(item):
-            resp = await item(line, runner, *args)
-        else:
-            resp = item(line, runner, *args)
+        resp = item(line, runner, *args)
+        if inspect.isawaitable(resp):
+            resp = await resp
 
         if not isinstance(resp, VPObject):
             resp = PyObjectWrapper(runner, resp)
@@ -121,11 +123,10 @@ class PyObjectWrapper(PyNativeObjectWrapper):
             else:
                 _args.append(arg)
  
-        if inspect.iscoroutine(item) or inspect.iscoroutinefunction(item):
-            resp = await item(*_args)
-        else:
-            resp = item(*_args)
 
+        resp = item(*_args)
+        if inspect.isawaitable(resp):
+            resp = await resp
 
         if not isinstance(resp, VPObject):
             if isinstance(resp, str):
@@ -247,6 +248,9 @@ class Integer(Primary):
             return False
 
         return self._value == other._value
+    
+    def __bool__(self):
+        return self._value != 0
 
 class Boolean(Primary):
     def __init__(self, value, lineno: int, runner):
@@ -269,7 +273,9 @@ class Boolean(Primary):
 
         return self._value == other._value
 
-
+    def __bool__(self):
+        return self._value
+    
 class Function(VPObject):
     def __init__(self, ast, runner):
         self._ast = ast

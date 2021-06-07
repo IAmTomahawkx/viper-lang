@@ -28,7 +28,7 @@ class Block(list):
         self.index = index
 
 
-class ASTBase:
+class Statement:
     __slots__ = "lineno", "offset"
 
     def __init__(self, lineno: int, offset: int):
@@ -44,7 +44,11 @@ class ASTBase:
         pass
 
 
-class Identifier(ASTBase):
+class Expr(Statement):
+    pass
+
+
+class Identifier(Expr):
     __slots__ = ('name',)
     cls_name = "identifier"
 
@@ -68,10 +72,10 @@ class Identifier(ASTBase):
         return await runner.get_variable(self)
 
 
-class Assignment(ASTBase):
+class Assignment(Statement):
     __slots__ = "name", "value", "static"
 
-    def __init__(self, name: Identifier, value: ASTBase, lineno: int, offset: int,
+    def __init__(self, name: Identifier, value: Statement, lineno: int, offset: int,
                  static=False):
         self.name = name
         self.value = value
@@ -81,7 +85,8 @@ class Assignment(ASTBase):
     async def execute(self, runner: "Runtime"):
         await runner.set_variable(self.name, await self.value.execute(runner), self.static)
 
-class Cast(ASTBase):
+
+class Cast(Expr):
     __slots__ = "name", "caster"
 
     def __init__(self, name: Identifier, caster: Identifier, lineno: int, offset: int):
@@ -101,7 +106,8 @@ class Cast(ASTBase):
 
         return name.__getattribute__("_cast")(caster, self.lineno)
 
-class Attribute(ASTBase):
+
+class Attribute(Statement):
     __slots__ = "parent", "child", "appended_children"
 
     def __init__(self, parent: Identifier, child: Identifier, lineno: int, offset: int,
@@ -132,7 +138,7 @@ class Attribute(ASTBase):
         return result
 
 
-class Argument(ASTBase):
+class Argument(Statement):
     __slots__ = "name", "optional", "default", "position"
 
     def __init__(self, name: Identifier, optional: bool, position: int, lineno: int, offset: int,
@@ -160,10 +166,10 @@ class Argument(ASTBase):
         return isinstance(other, Argument) and other.name == self.name and other.optional == self.optional
 
 
-class CallArgument(ASTBase):
+class CallArgument(Statement):
     __slots__ = "position", "value", "index", "type"
 
-    def __init__(self, position: int, value: Union[ASTBase, objects.Primary], lineno: int, offset: int):
+    def __init__(self, position: int, value: Union[Statement, objects.Primary], lineno: int, offset: int):
         self.position = position
         self.value = value
         self.index = -1
@@ -177,10 +183,10 @@ class CallArgument(ASTBase):
         return await self.value.execute(runner)
 
 
-class Function(ASTBase):
+class Function(Statement):
     __slots__ = "code", "arguments", "static", "name", "matches"
 
-    def __init__(self, name: Identifier, code: List[ASTBase], arguments: List[Argument], static: bool, lineno: int,
+    def __init__(self, name: Identifier, code: List[Statement], arguments: List[Argument], static: bool, lineno: int,
                  offset: int):
         self.code = code
         self.arguments = arguments
@@ -202,7 +208,8 @@ class Function(ASTBase):
             if min_args <= aln <= max_args:
                 return await match._ast._actual_execute(runner, args)
 
-        raise errors.ViperExecutionError(runner, self.lineno, f"function {self.name.name} could not take such arguments: {', '.join((str(x) for x in args))}")
+        raise errors.ViperExecutionError(runner, self.lineno,
+                                         f"function {self.name.name} could not take such arguments: {', '.join((str(x) for x in args))}")
 
     async def _actual_execute(self, runner: "Runtime", args: List[CallArgument]) -> "VPObject":
         with runner.new_scope():
@@ -212,14 +219,14 @@ class Function(ASTBase):
                 if value is None:
                     raise errors.ViperExecutionError(runner, self.lineno, f"No value passed for argument '{arg.name}'")
                 elif isinstance(value, objects.Primary):
-                    value = value._copy() # make them immutable
+                    value = value._copy()  # make them immutable
 
                 await runner.set_variable(arg.name, value, False)
 
             return await runner._run_function_body(self.code)
 
 
-class FunctionCall(ASTBase):
+class FunctionCall(Expr):
     __slots__ = "name", "args"
 
     def __init__(self, name: Union[Identifier, Attribute], args: List[CallArgument], lineno: int, offset: int):
@@ -251,10 +258,10 @@ class FunctionCall(ASTBase):
             raise errors.ViperExecutionError(runner, self.name.lineno, f"{func} is not callable")
 
 
-class If(ASTBase):
+class If(Statement):
     __slots__ = "condition", "code", "others", "finish"
 
-    def __init__(self, condition: "BiOperatorExpr", block: List[Any], lineno: int, offset: int):
+    def __init__(self, condition: "Expr", block: List[Any], lineno: int, offset: int):
         self.condition = condition
         self.code = block
         self.others: List["ElseIf"] = []
@@ -268,16 +275,16 @@ class If(ASTBase):
 
         for elseif in self.others:
             if await elseif.condition.execute(runner):
-                return await runner._run_function_body(self.code)
+                return await runner._run_function_body(elseif.code)
 
         if self.finish:
             return await runner._run_function_body(self.finish.code)
 
 
-class ElseIf(ASTBase):
+class ElseIf(Statement):
     __slots__ = "condition", "code"
 
-    def __init__(self, condition: "BiOperatorExpr", block: List[Any], lineno: int, offset: int):
+    def __init__(self, condition: "Expr", block: List[Any], lineno: int, offset: int):
         self.condition = condition
         self.code = block
         super().__init__(lineno, offset)
@@ -288,15 +295,17 @@ class ElseIf(ASTBase):
             return await runner._run_function_body(self.code)
 
 
-class Else(ASTBase):
+class Else(Statement):
     __slots__ = "code",
 
     def __init__(self, code: List[Any], lineno: int, offset: int):
         self.code = code
         super().__init__(lineno, offset)
 
-class PrimaryWrapper(ASTBase):
+
+class PrimaryWrapper(Statement):
     __slots__ = "wraps", "obj"
+
     def __init__(self, wraps: Type, obj: Any, lineno: int, offset: int):
         self.wraps = wraps
         self.obj = obj
@@ -305,8 +314,10 @@ class PrimaryWrapper(ASTBase):
     async def execute(self, runner: "Runtime"):
         return self.wraps(self.obj, self.lineno, runner)
 
-class Import(ASTBase):
+
+class Import(Statement):
     __slots__ = "module",
+
     def __init__(self, module: Identifier, lineno: int, offset: int):
         self.module = module
         super().__init__(lineno, offset)
@@ -314,8 +325,10 @@ class Import(ASTBase):
     async def execute(self, runner: "Runtime"):
         return await runner.import_module(self.module, self.module.lineno)
 
-class Try(ASTBase):
+
+class Try(Statement):
     __slots__ = "code", "catch"
+
     def __init__(self, code: List[Any], lineno: int, offset: int):
         self.code = code
         self.catch: Optional["Catch"] = None
@@ -331,14 +344,17 @@ class Try(ASTBase):
                 runner.scope.del_variable(runner, Identifier("error", -1, -1))
 
 
-class Catch(ASTBase):
+class Catch(Statement):
     __slots__ = "code",
+
     def __init__(self, code: List[Any], lineno: int, offset: int):
         self.code = code
         super().__init__(lineno, offset)
 
-class Throw(ASTBase):
+
+class Throw(Statement):
     __slots__ = "expr",
+
     def __init__(self, expr: Any, lineno: int, offset: int):
         self.expr = expr
         super().__init__(lineno, offset)
@@ -349,6 +365,7 @@ class Throw(ASTBase):
             raise errors.ViperTypeError(runner, self.expr.lineno, f"Expected String, got {value}")
 
         raise errors.ViperRaisedError(runner, self.expr.lineno, value._value)
+
 
 class Operator:
     __slots__ = ()
@@ -408,6 +425,7 @@ class LessThan(Operator):
 class LessOrEqual(Operator):
     pass
 
+
 def unwrap_wrapped(func):
     @functools.wraps(func)
     def wrapped(self, runner, l, r):
@@ -424,12 +442,14 @@ def unwrap_wrapped(func):
         if not isinstance(resp, objects.VPObject):
             return objects.PyObjectWrapper(runner, resp)
         return resp
+
     return wrapped
 
-class BiOperatorExpr(ASTBase):
+
+class BiOperatorExpr(Expr):
     __slots__ = ('left', 'op', 'right')
 
-    def __init__(self, left: ASTBase, op: Any, right: ASTBase, lineno: int, offset: int):
+    def __init__(self, left: Statement, op: Any, right: Statement, lineno: int, offset: int):
         self.left = left
         self.op = op
         self.right = right
@@ -483,8 +503,10 @@ class BiOperatorExpr(ASTBase):
         return l._cast(r, -1)
 
     async def execute(self, runner: "Runtime"):
-        left = await runner.get_variable(self.left) if isinstance(self.left, Identifier) else await self.left.execute(runner)
-        right = await runner.get_variable(self.right) if isinstance(self.right, Identifier) else await self.right.execute(
+        left = await runner.get_variable(self.left) if isinstance(self.left, Identifier) else await self.left.execute(
+            runner)
+        right = await runner.get_variable(self.right) if isinstance(self.right,
+                                                                    Identifier) else await self.right.execute(
             runner)
 
         return getattr(self, '_' + self.op.__name__)(runner, left, right)
